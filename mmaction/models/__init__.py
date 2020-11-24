@@ -13,7 +13,8 @@ from .losses import (BCELossWithLogits, BinaryLogisticRegressionLoss, BMNLoss,
 from .necks import TPN
 from .recognizers import (AudioRecognizer, BaseRecognizer, recognizer2d,
                           recognizer3d)
-from .registry import BACKBONES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS
+from .registry import (BACKBONES, DETECTORS, HEADS, LOCALIZERS, LOSSES,
+                       RECOGNIZERS)
 
 __all__ = [
     'BACKBONES', 'HEADS', 'RECOGNIZERS', 'build_recognizer', 'build_head',
@@ -25,5 +26,5 @@ __all__ = [
     'PEM', 'TEM', 'BinaryLogisticRegressionLoss', 'BMN', 'BMNLoss',
     'build_model', 'OHEMHingeLoss', 'SSNLoss', 'ResNet3dCSN', 'ResNetTIN',
     'TPN', 'TPNHead', 'build_loss', 'build_neck', 'AudioRecognizer',
-    'AudioTSNHead', 'X3D', 'X3DHead'
+    'AudioTSNHead', 'X3D', 'X3DHead', 'DETECTORS'
 ]
