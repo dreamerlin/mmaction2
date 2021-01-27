@@ -1,6 +1,7 @@
 import os.path as osp
 import warnings
 from math import inf
+import time
 
 import mmcv
 from mmcv.runner import Hook
@@ -168,6 +169,7 @@ class EpochEvalHook(Hook):
         """
         eval_res = self.dataloader.dataset.evaluate(
             results, logger=runner.logger, **self.eval_kwargs)
+        time.sleep(2)
         for name, val in eval_res.items():
             runner.log_buffer.output[name] = val
         runner.log_buffer.ready = True
@@ -258,13 +260,16 @@ class DistEpochEvalHook(EpochEvalHook):
         if tmpdir is None:
             tmpdir = osp.join(runner.work_dir, '.eval_hook')
 
+        time.sleep(2)
         results = multi_gpu_test(
             runner.model,
             self.dataloader,
             tmpdir=tmpdir,
             gpu_collect=self.gpu_collect)
+        time.sleep(2)
         if runner.rank == 0:
             print('\n')
+            time.sleep(2)
             key_score = self.evaluate(runner, results)
             if (self.save_best and key_score is not None
                     and self.compare_func(key_score, self.best_score)):
