@@ -81,18 +81,22 @@ class BaseHead(nn.Module, metaclass=ABCMeta):
             labels = labels.unsqueeze(0)
 
         if not self.multi_class:
-            top_k_acc = top_k_accuracy(cls_score.detach().cpu().numpy(),
-                                       labels.detach().cpu().numpy(), (1, 5))
-            losses['top1_acc'] = torch.tensor(
-                top_k_acc[0], device=cls_score.device)
-            losses['top5_acc'] = torch.tensor(
-                top_k_acc[1], device=cls_score.device)
+            try:
+                top_k_acc = top_k_accuracy(cls_score.detach().cpu().numpy(),
+                                           labels.detach().cpu().numpy(), (1, 5))
+                losses['top1_acc'] = torch.tensor(
+                    top_k_acc[0], device=cls_score.device)
+                losses['top5_acc'] = torch.tensor(
+                    top_k_acc[1], device=cls_score.device)
+            except:
+                pass
 
         elif self.label_smooth_eps != 0:
             labels = ((1 - self.label_smooth_eps) * labels +
                       self.label_smooth_eps / self.num_classes)
 
         loss_cls = self.loss_cls(cls_score, labels, **kwargs)
+        loss_cls.requires_grad=True
         # loss_cls may be dictionary or single tensor
         if isinstance(loss_cls, dict):
             losses.update(loss_cls)

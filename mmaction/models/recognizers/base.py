@@ -29,6 +29,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
     def __init__(self,
                  backbone,
                  cls_head,
+                 sampler=None,
                  neck=None,
                  train_cfg=None,
                  test_cfg=None):
@@ -46,6 +47,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         if neck is not None:
             self.neck = builder.build_neck(neck)
+        if sampler is not None:
+            self.sampler = builder.build_sampler(sampler)
         self.cls_head = builder.build_head(cls_head)
 
         self.train_cfg = train_cfg

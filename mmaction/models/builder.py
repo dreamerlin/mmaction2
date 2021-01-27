@@ -4,7 +4,8 @@ import torch.nn as nn
 from mmcv.utils import Registry, build_from_cfg
 
 from mmaction.utils import import_module_error_func
-from .registry import BACKBONES, HEADS, LOCALIZERS, LOSSES, NECKS, RECOGNIZERS
+from .registry import (BACKBONES, HEADS, LOCALIZERS, LOSSES, NECKS,
+                       RECOGNIZERS, SAMPLER)
 
 try:
     from mmdet.models.builder import DETECTORS, build_detector
@@ -38,6 +39,10 @@ def build(cfg, registry, default_args=None):
         return nn.Sequential(*modules)
 
     return build_from_cfg(cfg, registry, default_args)
+
+
+def build_sampler(cfg):
+    return build(cfg, SAMPLER)
 
 
 def build_backbone(cfg):

@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch.nn.functional as F
 from mmcv.cnn import normal_init
 
 from ..registry import HEADS
@@ -30,6 +31,7 @@ class TSNHead(BaseHead):
                  consensus=dict(type='AvgConsensus', dim=1),
                  dropout_ratio=0.4,
                  init_std=0.01,
+                 use_softmax=True,
                  **kwargs):
         super().__init__(num_classes, in_channels, loss_cls=loss_cls, **kwargs)
 
@@ -56,6 +58,7 @@ class TSNHead(BaseHead):
         else:
             self.dropout = None
         self.fc_cls = nn.Linear(self.in_channels, self.num_classes)
+        self.use_softmax = use_softmax
 
     def init_weights(self):
         """Initiate the parameters from scratch."""
@@ -88,4 +91,8 @@ class TSNHead(BaseHead):
         # [N, in_channels]
         cls_score = self.fc_cls(x)
         # [N, num_classes]
+
+        if self.use_softmax:
+            cls_score = F.softmax(cls_score, dim=1)
+
         return cls_score

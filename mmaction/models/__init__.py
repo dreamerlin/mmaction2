@@ -4,7 +4,7 @@ from .backbones import (C3D, X3D, MobileNetV2, MobileNetV2TSM, ResNet,
                         ResNetTIN, ResNetTSM, TANet)
 from .builder import (DETECTORS, build_backbone, build_detector, build_head,
                       build_localizer, build_loss, build_model, build_neck,
-                      build_recognizer)
+                      build_recognizer, build_sampler)
 from .common import LFB, TAM, Conv2plus1d, ConvAudio
 from .heads import (AudioTSNHead, AVARoIHead, BaseHead, BBoxHeadAVA, FBOHead,
                     I3DHead, LFBInferHead, SlowFastHead, TPNHead, TSMHead,
@@ -16,7 +16,8 @@ from .losses import (BCELossWithLogits, BinaryLogisticRegressionLoss, BMNLoss,
 from .necks import TPN
 from .recognizers import (AudioRecognizer, BaseRecognizer, recognizer2d,
                           recognizer3d)
-from .registry import BACKBONES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS
+from .registry import (BACKBONES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS,
+                       SAMPLER)
 from .roi_extractors import SingleRoIExtractor3D
 
 __all__ = [
@@ -32,5 +33,5 @@ __all__ = [
     'AudioTSNHead', 'X3D', 'X3DHead', 'ResNet3dLayer', 'DETECTORS',
     'SingleRoIExtractor3D', 'BBoxHeadAVA', 'ResNetAudio', 'build_detector',
     'ConvAudio', 'AVARoIHead', 'MobileNetV2', 'MobileNetV2TSM', 'TANet', 'LFB',
-    'FBOHead', 'LFBInferHead'
+    'FBOHead', 'LFBInferHead', 'build_sampler', 'SAMPLER'
 ]

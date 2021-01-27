@@ -1,11 +1,12 @@
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import ConvModule, constant_init, kaiming_init
 from mmcv.runner import load_checkpoint
 from torch.nn.modules.batchnorm import _BatchNorm
 
 from ...utils import get_root_logger
-from ..builder import BACKBONES
+from ..builder import BACKBONES, SAMPLER
 
 
 def make_divisible(value, divisor, min_value=None, min_ratio=0.9):
@@ -30,6 +31,7 @@ def make_divisible(value, divisor, min_value=None, min_ratio=0.9):
     # Make sure that round down does not go down by more than (1-min_ratio).
     if new_value < min_ratio * value:
         new_value += divisor
+
     return new_value
 
 
@@ -119,6 +121,7 @@ class InvertedResidual(nn.Module):
 
 
 @BACKBONES.register_module()
+@SAMPLER.register_module()
 class MobileNetV2(nn.Module):
     """MobileNetV2 backbone.
 
@@ -158,7 +161,9 @@ class MobileNetV2(nn.Module):
                  norm_cfg=dict(type='BN2d', requires_grad=True),
                  act_cfg=dict(type='ReLU6', inplace=True),
                  norm_eval=False,
-                 with_cp=False):
+                 with_cp=False,
+                 is_sampler=False,
+                 num_segments=8):
         super().__init__()
         self.pretrained = pretrained
         self.widen_factor = widen_factor
@@ -222,6 +227,13 @@ class MobileNetV2(nn.Module):
         self.add_module('conv2', layer)
         self.layers.append('conv2')
 
+        self.is_sampler = is_sampler
+        if self.is_sampler:
+            self.num_segments = num_segments
+            self.avg_pool = nn.AdaptiveAvgPool2d(1)
+            self.logit = nn.Linear(self.out_channel, 1)
+            # self.value_net = nn.Linear(self.out_channel, 1)
+
     def make_layer(self, out_channels, num_blocks, stride, expand_ratio):
         """Stack InvertedResidual blocks to build a layer for MobileNetV2.
 
@@ -263,7 +275,7 @@ class MobileNetV2(nn.Module):
         else:
             raise TypeError('pretrained must be a str or None')
 
-    def forward(self, x):
+    def _inner_forward(self, x):
         x = self.conv1(x)
 
         outs = []
@@ -277,6 +289,19 @@ class MobileNetV2(nn.Module):
             return outs[0]
         else:
             return tuple(outs)
+
+    def forward(self, x, num_batchs):
+        ret = self._inner_forward(x)
+        if self.is_sampler:
+            ret = self.avg_pool(ret)
+            ret = ret.squeeze()
+            # print(ret.shape)
+            ret = ret.reshape((num_batchs, -1, ret.shape[-1]))
+            # print(ret.shape)
+            # value = self.value_net(ret)
+            probs = F.softmax(self.logit(ret).squeeze(), dim=1)
+            return probs
+        return ret
 
     def _freeze_stages(self):
         if self.frozen_stages >= 0:

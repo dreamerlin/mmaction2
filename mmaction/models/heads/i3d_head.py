@@ -28,6 +28,7 @@ class I3DHead(BaseHead):
                  spatial_type='avg',
                  dropout_ratio=0.5,
                  init_std=0.01,
+                 frozen=False,
                  **kwargs):
         super().__init__(num_classes, in_channels, loss_cls, **kwargs)
 
@@ -45,6 +46,7 @@ class I3DHead(BaseHead):
             self.avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         else:
             self.avg_pool = None
+        self.frozen = frozen
 
     def init_weights(self):
         """Initiate the parameters from scratch."""
@@ -71,3 +73,12 @@ class I3DHead(BaseHead):
         cls_score = self.fc_cls(x)
         # [N, num_classes]
         return cls_score
+
+    def train(self, mode=True):
+        """Set the optimization status when training."""
+        super().train(mode)
+        if self.frozen:
+            self.dropout.eval()
+            self.fc_cls.eval()
+            for param in self.fc_cls.parameters():
+                param.requires_grad = False

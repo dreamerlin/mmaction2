@@ -265,7 +265,7 @@ class FormatShape:
     def __init__(self, input_format, collapse=False):
         self.input_format = input_format
         self.collapse = collapse
-        if self.input_format not in ['NCTHW', 'NCHW', 'NCHW_Flow', 'NPTCHW']:
+        if self.input_format not in ['NCTHW', 'NCHW', 'NCHW_Flow', 'NPTCHW', 'NCTHW2D']:
             raise ValueError(
                 f'The input format {self.input_format} is invalid.')
 
@@ -298,6 +298,17 @@ class FormatShape:
         elif self.input_format == 'NCHW':
             imgs = np.transpose(imgs, (0, 3, 1, 2))
             # M x C x H x W
+        elif self.input_format == 'NCTHW2D':
+            imgs = np.transpose(imgs, (0, 3, 1, 2))
+            # M x C x H x W
+            num_clips = results['num_clips']
+            clip_len = results['clip_len']
+            num_crops = imgs.shape[0] // (num_clips * clip_len)
+
+            imgs = imgs.reshape((num_crops, num_clips) + imgs.shape[1:])
+            # N_crops x N_clips x C x H x W
+            imgs = np.transpose(imgs, (0, 2, 1, 3, 4))
+            # N_crops x C x N_clips x H x W
         elif self.input_format == 'NCHW_Flow':
             num_clips = results['num_clips']
             clip_len = results['clip_len']
