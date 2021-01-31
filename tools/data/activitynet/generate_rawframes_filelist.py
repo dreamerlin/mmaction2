@@ -6,7 +6,9 @@ import mmcv
 data_file = '../../../data/ActivityNet'
 video_list = f'{data_file}/video_info_new.csv'
 anno_file = f'{data_file}/anet_anno_action.json'
-rawframe_dir = f'{data_file}/rawframes'
+# rawframe_dir = f'{data_file}/rawframes'
+train_rawframe_dir = f'{data_file}/rawframes_train'
+val_rawframe_dir = f'{data_file}/rawframes_val'
 action_name_list = 'action_name.csv'
 
 
@@ -34,13 +36,26 @@ def generate_rawframes_filelist():
         k: v
         for k, v in video_annos.items() if k in anet_annotations
     }
+    # import pdb; pdb.set_trace()
     # update numframe
     for video in video_annos:
-        pth = osp.join(rawframe_dir, video)
-        num_imgs = len(os.listdir(pth))
+        # pth = osp.join(rawframe_dir, video)
+        train_pth = osp.join(train_rawframe_dir, video[2:])
+        val_pth = osp.join(val_rawframe_dir, video[2:])
+        if osp.exists(train_pth):
+            pth = train_pth
+        elif osp.exists(val_pth):
+            pth = val_pth
+        else:
+            continue
+        num_frames = len(os.listdir(pth))
+        # if num_frames == 275:
+        #     import pdb; pdb.set_trace()
+        # if 'ycA2gqWhPGk' in video:
+        #     import pdb; pdb.set_trace()
         # one more rgb img than flow
-        assert (num_imgs - 1) % 3 == 0
-        num_frames = (num_imgs - 1) // 3
+        # assert (num_imgs - 1) % 3 == 0
+        # num_frames = (num_imgs - 1) // 3
         video_annos[video]['numframe'] = num_frames
 
     anet_labels = open(action_name_list).readlines()
@@ -59,11 +74,11 @@ def generate_rawframes_filelist():
         return anet_labels.index(label)
 
     train_lines = [
-        k + ' ' + str(train_videos[k]['numframe']) + ' ' +
+        k[2:] + ' ' + str(train_videos[k]['numframe']) + ' ' +
         str(simple_label(k)) for k in train_videos
     ]
     val_lines = [
-        k + ' ' + str(val_videos[k]['numframe']) + ' ' + str(simple_label(k))
+        k[2:] + ' ' + str(val_videos[k]['numframe']) + ' ' + str(simple_label(k))
         for k in val_videos
     ]
 
@@ -91,9 +106,9 @@ def generate_rawframes_filelist():
 
     train_clips, val_clips = [], []
     for k in train_videos:
-        train_clips.extend(clip_list(k, anet_annotations[k], train_videos[k]))
+        train_clips.extend(clip_list(k[2:], anet_annotations[k], train_videos[k]))
     for k in val_videos:
-        val_clips.extend(clip_list(k, anet_annotations[k], val_videos[k]))
+        val_clips.extend(clip_list(k[2:], anet_annotations[k], val_videos[k]))
 
     with open(osp.join(data_file, 'anet_train_clip.txt'), 'w') as fout:
         fout.write('\n'.join(train_clips))

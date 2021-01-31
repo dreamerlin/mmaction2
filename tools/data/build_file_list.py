@@ -237,6 +237,7 @@ def main():
                     json.dump(val_list, f)
     else:
         lists = build_file_list(splits[0], frame_info, shuffle=args.shuffle)
+        import pdb; pdb.set_trace()
 
         if args.subset == 'train':
             ind = 0
