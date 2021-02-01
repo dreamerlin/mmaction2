@@ -16,6 +16,11 @@ from mmaction.apis import multi_gpu_test, single_gpu_test
 from mmaction.datasets import build_dataloader, build_dataset
 from mmaction.models import build_model
 
+import numpy as np
+def softmax(x):
+    exp_x = np.exp(x)
+    softmax_x = exp_x / np.sum(exp_x)
+    return softmax_x
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -186,6 +191,15 @@ def main():
             broadcast_buffers=False)
         outputs = multi_gpu_test(model, data_loader, args.tmpdir,
                                  args.gpu_collect)
+
+    #with open('out.txt', 'a+') as f:
+    #    r_list = []
+    #    if outputs is not None:
+    #        for output in outputs:
+    #            output = softmax(output)
+    #            r = str(output[80])
+    #            r_list.append(r)
+    #       f.write('\n'.join(r_list))   
 
     rank, _ = get_dist_info()
     if rank == 0:

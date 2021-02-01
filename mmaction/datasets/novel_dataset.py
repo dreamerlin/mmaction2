@@ -21,6 +21,7 @@ class NovelDataset(RawframeDataset):
                 video_info = {}
 
                 frame_dir = line_split[0]
+                video_info['vid'] = frame_dir
                 if self.data_prefix is not None:
                     frame_dir = osp.join(self.data_prefix, frame_dir)
 
@@ -31,6 +32,7 @@ class NovelDataset(RawframeDataset):
                 video_info['frame_dir'] = frame_dir
                 video_info['frame_inds'] = frame_inds
                 video_info['label'] = label
+                video_info['frame_sample'] = line_split[1]
 
                 video_infos.append(video_info)
 

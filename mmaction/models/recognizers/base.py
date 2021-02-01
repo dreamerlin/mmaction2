@@ -6,6 +6,8 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.runner import auto_fp16
+import numpy as np
+
 
 from .. import builder
 
@@ -160,6 +162,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
     def forward(self, imgs, label=None, return_loss=True, **kwargs):
         """Define the computation performed at every call."""
+        # frame_sample = kwargs['img_metas']
+        img_metas = kwargs.pop('img_metas')
+
         if kwargs.get('gradcam', False):
             del kwargs['gradcam']
             return self.forward_gradcam(imgs, **kwargs)
@@ -168,7 +173,17 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 raise ValueError('Label should not be None.')
             return self.forward_train(imgs, label, **kwargs)
 
-        return self.forward_test(imgs, **kwargs)
+        # return self.forward_test(imgs, **kwargs)
+        result = self.forward_test(imgs, **kwargs)
+        label = label.cpu().numpy()
+
+        res_list = []
+        for l, res in zip(label, result):
+            aa = res[l]
+            res_list.append(aa)
+
+        result = np.array(res_list).reshape(len(res_list), -1)
+        return result, img_metas, label
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
@@ -198,6 +213,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         """
         imgs = data_batch['imgs']
         label = data_batch['label']
+        if 'img_metas' in data_batch:
+            frame_sample = data_batch['img_metas'].data['frame_sample']
 
         aux_info = {}
         for item in self.aux_info:
@@ -213,6 +230,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             log_vars=log_vars,
             num_samples=len(next(iter(data_batch.values()))))
 
+        if 'img_metas' in data_batch:
+            outputs['frame_sample'] = frame_sample
+
         return outputs
 
     def val_step(self, data_batch, optimizer, **kwargs):
@@ -224,6 +244,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         """
         imgs = data_batch['imgs']
         label = data_batch['label']
+        if 'img_metas' in data_batch:
+            frame_sample = data_batch['img_metas'].data['frame_sample']
 
         aux_info = {}
         for item in self.aux_info:
@@ -237,5 +259,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             loss=loss,
             log_vars=log_vars,
             num_samples=len(next(iter(data_batch.values()))))
+
+        if 'img_metas' in data_batch:
+            outputs['frame_sample'] = frame_sample
 
         return outputs
