@@ -12,10 +12,7 @@ from mmaction.datasets.pipelines import Compose
 from mmaction.models import build_recognizer
 
 
-def init_recognizer(config,
-                    checkpoint=None,
-                    device='cuda:0',
-                    use_frames=False):
+def init_recognizer(config, checkpoint=None, device=None, use_frames=False):
     """Initialize a recognizer from config file.
 
     Args:
@@ -23,8 +20,8 @@ def init_recognizer(config,
             object.
         checkpoint (str | None, optional): Checkpoint path/url. If set to None,
             the model will not load any weights. Default: None.
-        device (str | :obj:`torch.device`): The desired device of returned
-            tensor. Default: 'cuda:0'.
+        device (str | :obj:`torch.device` | None): The desired device of
+            returned tensor. Default: None.
         use_frames (bool): Whether to use rawframes as input. Default:False.
 
     Returns:
@@ -46,11 +43,15 @@ def init_recognizer(config,
     # pretrained model is unnecessary since we directly load checkpoint later
     config.model.backbone.pretrained = None
     model = build_recognizer(config.model, test_cfg=config.get('test_cfg'))
+    model.cfg = config
 
     if checkpoint is not None:
-        load_checkpoint(model, checkpoint, map_location=device)
-    model.cfg = config
-    model.to(device)
+        if device is None or 'cpu':
+            load_checkpoint(model, checkpoint, map_location='cpu')
+            model.to('cpu')
+        else:
+            load_checkpoint(model, checkpoint, map_location=device)
+            model.to(device)
     model.eval()
     return model
 

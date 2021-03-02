@@ -7,7 +7,7 @@ import cv2
 import mmcv
 import numpy as np
 import torch
-from mmcv.parallel import collate, scatter
+from mmcv.parallel import MMDataParallel, collate, scatter
 
 from mmaction.apis import init_recognizer
 from mmaction.datasets.pipelines import Compose
@@ -39,8 +39,6 @@ def parse_args():
         default=1,
         help='input step for sampling frames')
     parser.add_argument(
-        '--device', type=str, default='cuda:0', help='CPU/CUDA device option')
-    parser.add_argument(
         '--threshold',
         type=float,
         default=0.01,
@@ -54,6 +52,22 @@ def parse_args():
               'which you sample frames, which equals to '
               'clip_len x frame_interval), if set as 0, the '
               'prediction stride is 1'))
+    group_gpus = parser.add_mutually_exclusive_group()
+    group_gpus.add_argument(
+        '--device',
+        type=str,
+        help="CPU/CUDA device option like 'cpu' or 'cuda:0'")
+    group_gpus.add_argument(
+        '--gpu-ids',
+        type=int,
+        nargs='+',
+        help='ids of gpus to use '
+        '(only applicable to non-distributed training)')
+    group_gpus.add_argument(
+        '--gpus',
+        type=int,
+        help='number of gpus to use '
+        '(only applicable to non-distributed training)')
     args = parser.parse_args()
     return args
 
@@ -164,7 +178,8 @@ def inference(model, data, args, frame_queue):
 def main():
     args = parse_args()
 
-    args.device = torch.device(args.device)
+    if args.device:
+        args.device = torch.device(args.device)
     model = init_recognizer(args.config, args.checkpoint, device=args.device)
     data = dict(img_shape=None, modality='RGB', label=-1)
     with open(args.label, 'r') as f:
@@ -190,6 +205,17 @@ def main():
     args.sample_length = sample_length
     args.test_pipeline = test_pipeline
 
+    gpu_ids = None
+    if args.gpu_ids is not None:
+        gpu_ids = args.gpu_ids
+    elif args.gpus is not None:
+        gpu_ids = range(args.gpus)
+    elif args.device is None:
+        raise ValueError("one of 'device', 'gpu-ids', 'gpus' "
+                         'should be assigned.')
+
+    if gpu_ids:
+        model = MMDataParallel(model.cuda(gpu_ids[0]), device_ids=gpu_ids)
     show_results(model, data, label, args)
 
 
