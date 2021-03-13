@@ -7,7 +7,8 @@ from mmcv.utils import _BatchNorm
 
 from mmaction.models import (C3D, X3D, MobileNetV2TSM, ResNet2Plus1d,
                              ResNet3dCSN, ResNet3dSlowFast, ResNet3dSlowOnly,
-                             ResNetAudio, ResNetTIN, ResNetTSM, TANet)
+                             ResNetAudio, ResNetGST, ResNetTIN, ResNetTSM,
+                             TANet)
 from mmaction.models.backbones.resnet_tsm import NL3DWrapper
 from .base import check_norm_state, generate_backbone_demo_inputs
 
@@ -625,6 +626,24 @@ def test_c3d_backbone():
     c3d_bn.train()
     feat = c3d_bn(imgs)
     assert feat.shape == torch.Size([1, 4096])
+
+
+def test_gst_backbone():
+    """Test GST backbone."""
+    input_shape = (1, 3, 8, 64, 64)
+    imgs = generate_backbone_demo_inputs(input_shape)
+
+    gst = ResNetGST(50, pretrained=None, alpha=4, beta=2)
+    gst.init_weights()
+    gst.train()
+    feat = gst(imgs)
+    assert feat.shape == torch.Size([1, 2048, 8, 2, 2])
+
+    gst = ResNetGST(50, pretrained=None, alpha=4, beta=1)
+    gst.init_weights()
+    gst.train()
+    feat = gst(imgs)
+    assert feat.shape == torch.Size([1, 2048, 8, 2, 2])
 
 
 def test_resnet_audio_backbone():

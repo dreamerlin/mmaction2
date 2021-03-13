@@ -2,6 +2,7 @@ from .audio_tsn_head import AudioTSNHead
 from .base import BaseHead
 from .bbox_head import BBoxHeadAVA
 from .fbo_head import FBOHead
+from .gst_head import GSTHead
 from .i3d_head import I3DHead
 from .lfb_infer_head import LFBInferHead
 from .roi_head import AVARoIHead
@@ -15,5 +16,5 @@ from .x3d_head import X3DHead
 __all__ = [
     'TSNHead', 'I3DHead', 'BaseHead', 'TSMHead', 'SlowFastHead', 'SSNHead',
     'TPNHead', 'AudioTSNHead', 'X3DHead', 'BBoxHeadAVA', 'AVARoIHead',
-    'FBOHead', 'LFBInferHead'
+    'FBOHead', 'LFBInferHead', 'GSTHead'
 ]

@@ -88,7 +88,7 @@ class ResNetGST(ResNet3d):
                  conv1_kernel=(1, 7, 7),
                  conv1_stride_t=1,
                  pool1_stride_t=1,
-                 with_pools=False,
+                 with_pool2=False,
                  inflate=(0, 0, 0, 0),
                  **kwargs):
         self.arch_settings = {
@@ -105,10 +105,11 @@ class ResNetGST(ResNet3d):
             conv1_kernel=conv1_kernel,
             conv1_stride_t=conv1_stride_t,
             pool1_stride_t=pool1_stride_t,
-            with_pools=with_pools,
+            with_pool2=with_pool2,
             inflate=inflate,
             alpha=alpha,
-            beta=beta**kwargs)
+            beta=beta,
+            **kwargs)
 
     def _inflate_conv_params(self,
                              conv3d,

@@ -269,3 +269,34 @@ def test_c3d():
     recognizer(imgs, gradcam=True)
     for one_img in img_list:
         recognizer(one_img, gradcam=True)
+
+
+def test_gst():
+    config = get_recognizer_cfg('gst/gst_r50_1x1x8_70e_sthv1_rgb.py')
+    config.model['backbone']['pretrained'] = None
+
+    recognizer = build_recognizer(config.model)
+
+    input_shape = (1, 1, 3, 3, 32, 32)
+    demo_inputs = generate_recognizer_demo_inputs(input_shape, '3D')
+
+    imgs = demo_inputs['imgs']
+    gt_labels = demo_inputs['gt_labels']
+
+    losses = recognizer(imgs, gt_labels)
+    assert isinstance(losses, dict)
+
+    input_shape = (1, 3, 3, 8, 32, 32)
+    demo_inputs = generate_recognizer_demo_inputs(input_shape, '3D')
+
+    imgs = demo_inputs['imgs']
+    # Test forward test
+    with torch.no_grad():
+        img_list = [img[None, :] for img in imgs]
+        for one_img in img_list:
+            recognizer(one_img, None, return_loss=False)
+
+    # Test forward gradcam
+    recognizer(imgs, gradcam=True)
+    for one_img in img_list:
+        recognizer(one_img, gradcam=True)
