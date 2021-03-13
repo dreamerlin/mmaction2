@@ -98,8 +98,8 @@ class ResNetGST(ResNet3d):
             101: (GSTBottleneck3d, (3, 4, 23, 3)),
             152: (GSTBottleneck3d, (3, 8, 36, 3))
         }
-        assert alpha in [1, 2], 'channel splits for input channels, ' \
-                                '1 for GST-Large and 2 for GST'
+        assert beta in [1, 2], 'channel splits for input channels, ' \
+                               '1 for GST-Large and 2 for GST'
         self.alpha = alpha
         self.beta = beta
         super().__init__(
@@ -182,6 +182,15 @@ class ResNetGST(ResNet3d):
                     self._inflate_conv_params(module, state_dict_r2d,
                                               original_conv_name,
                                               inflated_param_names, True)
+            elif 'bn2' in name and isinstance(module, nn.BatchNorm3d):
+                original_bn_name = name
+                if original_bn_name + '.weight' not in state_dict_r2d:
+                    logger.warning(f'Module not exist in the state_dict_r2d'
+                                   f': {original_bn_name}')
+                else:
+                    self._inflate_bn_params(module, state_dict_r2d,
+                                            original_bn_name,
+                                            inflated_param_names)
 
         # check if any parameters in the 2d checkpoint are not loaded
         remaining_names = set(
