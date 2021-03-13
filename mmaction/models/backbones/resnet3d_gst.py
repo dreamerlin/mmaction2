@@ -98,6 +98,8 @@ class ResNetGST(ResNet3d):
             101: (GSTBottleneck3d, (3, 4, 23, 3)),
             152: (GSTBottleneck3d, (3, 8, 36, 3))
         }
+        assert alpha in [1, 2], 'channel splits for input channels, ' \
+                                '1 for GST-Large and 2 for GST'
         self.alpha = alpha
         self.beta = beta
         super().__init__(
@@ -177,7 +179,7 @@ class ResNetGST(ResNet3d):
                     logger.warning(f'Module not exist in the state_dict_r2d'
                                    f': {original_conv_name}')
                 else:
-                    self._inflate_conv_params(module.conv, state_dict_r2d,
+                    self._inflate_conv_params(module, state_dict_r2d,
                                               original_conv_name,
                                               inflated_param_names, True)
 

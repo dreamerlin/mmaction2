@@ -645,6 +645,14 @@ def test_gst_backbone():
     feat = gst(imgs)
     assert feat.shape == torch.Size([1, 2048, 8, 2, 2])
 
+    gst = ResNetGST(
+        50,
+        pretrained='torchvision://resnet50',
+        pretrained2d=True,
+        alpha=4,
+        beta=1)
+    gst.init_weights()
+
 
 def test_resnet_audio_backbone():
     """Test ResNetAudio backbone."""

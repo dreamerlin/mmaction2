@@ -272,7 +272,7 @@ def test_c3d():
 
 
 def test_gst():
-    config = get_recognizer_cfg('gst/gst_r50_1x1x8_70e_sthv1_rgb.py')
+    config = get_recognizer_cfg('gst/gst_r50_flip_1x1x8_70e_sthv1_rgb.py')
     config.model['backbone']['pretrained'] = None
 
     recognizer = build_recognizer(config.model)
