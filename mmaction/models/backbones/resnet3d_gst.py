@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from mmcv.cnn import ConvModule
+from mmcv.cnn import ConvModule, constant_init, kaiming_init
 from mmcv.runner import _load_checkpoint
 from torch.utils import checkpoint as cp
 
@@ -61,7 +61,7 @@ class GSTBottleneck3d(Bottleneck3d):
             out = self.conv3(out)
 
             if self.downsample is not None:
-                identity = self.downsample(x)
+                identity = self.downsample(identity)
 
             out = out + identity
             return out
@@ -139,12 +139,19 @@ class ResNetGST(ResNet3d):
 
     @staticmethod
     def _inflate_weights(self, logger):
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                kaiming_init(m)
+            elif isinstance(m, nn.BatchNorm3d):
+                constant_init(m, 1)
+
         state_dict_r2d = _load_checkpoint(self.pretrained)
         if 'state_dict' in state_dict_r2d:
             state_dict_r2d = state_dict_r2d['state_dict']
 
         inflated_param_names = []
         for name, module in self.named_modules():
+
             if isinstance(module, ConvModule):
                 # we use a ConvModule to wrap conv+bn+relu layers, thus the
                 # name mapping is needed
