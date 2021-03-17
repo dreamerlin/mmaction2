@@ -74,6 +74,18 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             selected_imgs = self.sample(imgs, probs, False)
         return selected_imgs
 
+    def get_reward(self, cls_score, gt_labels):
+        value, pred = torch.max(cls_score, dim=1)
+        match = (pred == gt_labels).data
+
+        reward = torch.empty_like(pred)
+        for i, score in enumerate(pred):
+            if match[i]:
+                reward[i] = score
+            else:
+                reward[i] = self.train_cfg.get('penalty', -1)
+        return reward, match.float()
+
     def forward_train(self, imgs, labels, **kwargs):
         num_batchs = imgs.shape[0]
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
