@@ -32,12 +32,9 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         if test_mode:
             sample_index = probs.topk(self.num_segments, dim=1)[1]
             sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
-            selected_imgs = torch.empty((sorted_sample_index.shape) + (imgs.shape[-3:]),
-                                        device=sorted_sample_index.device)
             num_batchs = sorted_sample_index.shape[0]
-            for i in range(num_batchs):
-                sample_index = sorted_sample_index[i]
-                selected_imgs[i] = imgs[i, sample_index]
+            batch_inds = torch.arange(num_batchs).unsqueeze(-1).expand_as(sorted_sample_index)
+            selected_imgs = imgs[batch_inds, sorted_sample_index]
         else:
             distribution = Bernoulli(probs)
             num_sample_times = self.num_segments * self.train_cfg.get(
@@ -47,16 +44,9 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 sample_result += distribution.sample()
             sample_index = sample_result.topk(self.num_segments, dim=1)[1]
             sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
-            # print(sorted_sample_index.shape)
-            # print(imgs.shape)
-            # selected_imgs = torch.gather(
-            #     imgs, dim=1, index=sorted_sample_index)
-            selected_imgs = torch.empty((sorted_sample_index.shape) + (imgs.shape[-3:]),
-                                        device=sorted_sample_index.device)
             num_batchs = sorted_sample_index.shape[0]
-            for i in range(num_batchs):
-                sample_index = sorted_sample_index[i]
-                selected_imgs[i] = imgs[i, sample_index]
+            batch_inds = torch.arange(num_batchs).unsqueeze(-1).expand_as(sorted_sample_index)
+            selected_imgs = imgs[batch_inds, sorted_sample_index]
 
         return selected_imgs
 
@@ -75,15 +65,17 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         return selected_imgs
 
     def get_reward(self, cls_score, gt_labels):
-        value, pred = torch.max(cls_score, dim=1)
+        reward, pred = torch.max(cls_score, dim=1, keepdim=True)
         match = (pred == gt_labels).data
 
-        reward = torch.empty_like(pred)
-        for i, score in enumerate(pred):
-            if match[i]:
-                reward[i] = score
-            else:
-                reward[i] = self.train_cfg.get('penalty', -1)
+        # reward = torch.empty_like(pred)
+        # for i, score in enumerate(pred):
+        #     if match[i]:
+        #         reward[i] = score
+        #     else:
+        #         reward[i] = self.train_cfg.get('penalty', -1)
+        reward[1 - match] = self.train_cfg.get('penalty', -1)
+
         return reward, match.float()
 
     def forward_train(self, imgs, labels, **kwargs):
@@ -124,49 +116,6 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         cls_score = self.cls_head(x)
         cls_score = self.average_clip(cls_score, num_clips_crops)
         return cls_score
-
-    # def forward_train(self, imgs, labels, **kwargs):
-    # losses = dict()
-    # cls_score_list = []
-    #
-    # for i in range(sample_map.shape[0]):
-    #     sample = sample_map[i]
-    #
-    #     img = imgs[sample]
-    #     img = img.reshape((1, ) + img.shape)
-    #     img = img.reshape((-1, ) + img.shape[2:])
-    #
-    #     x = self.extract_feat(img)
-    #
-    #     cls_score_item = self.cls_head(x)
-    #     cls_score_list.append(cls_score_item)
-    #
-    # cls_score = torch.cat(cls_score_list)
-    # gt_labels = labels.squeeze()
-    # loss_cls = self.cls_head.loss(cls_score, gt_labels, **kwargs)
-    # losses.update(loss_cls)
-    # return losses
-
-    # def _do_test(self, imgs):
-    #     sample_map = self.sampler(imgs, test_mode=True)
-    #     cls_score_list = []
-    #
-    #     for i in range(sample_map.shape[0]):
-    #         sample = sample_map[i]
-    #
-    #         img = imgs[sample]
-    #         img = img.reshape((1, ) + img.shape)
-    #         img = img.reshape((-1, ) + img.shape[2:])
-    #
-    #         x = self.extract_feat(img)
-    #
-    #         cls_score_item = self.cls_head(x)
-    #         cls_score_list.append(cls_score_item)
-    #
-    #     cls_score = torch.cat(cls_score_list)
-    #     cls_score = self.average_clip(cls_score)
-    #
-    #     return cls_score
 
     def forward_test(self, imgs):
         return self._do_test(imgs).cpu().numpy()

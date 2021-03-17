@@ -295,11 +295,8 @@ class MobileNetV2(nn.Module):
         if self.is_sampler:
             ret = self.avg_pool(ret)
             ret = ret.squeeze()
-            # print(ret.shape)
             ret = ret.reshape((num_batchs, -1, ret.shape[-1]))
-            # print(ret.shape)
-            # value = self.value_net(ret)
-            probs = F.softmax(self.logit(ret).squeeze(), dim=1)
+            probs = F.softmax(self.logit(ret).squeeze(1), dim=1)
             return probs
         return ret
 
