@@ -32,9 +32,12 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         if test_mode:
             sample_index = probs.topk(self.num_segments, dim=1)[1]
             sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+            # num_batches, num_segments
+            sorted_sample_index = sorted_sample_index.squeeze(-1)
             num_batches = sorted_sample_index.shape[0]
             batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
             selected_imgs = imgs[batch_inds, sorted_sample_index]
+            return selected_imgs
         else:
             distribution = Bernoulli(probs)
             num_sample_times = self.num_segments * self.train_cfg.get(
@@ -44,44 +47,39 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 sample_result += distribution.sample()
             sample_index = sample_result.topk(self.num_segments, dim=1)[1]
             sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+            # num_batches, num_segments
+            sorted_sample_index = sorted_sample_index.squeeze(-1)
             num_batches = sorted_sample_index.shape[0]
             batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
             selected_imgs = imgs[batch_inds, sorted_sample_index]
-
-        return selected_imgs
+            return selected_imgs, distribution
 
     def forward_sampler(self, imgs, num_batches, test_mode=False, **kwargs):
         if test_mode:
             probs = self.sampler(imgs, num_batches)
             imgs = imgs.reshape((num_batches, -1) + (imgs.shape[-3:]))
             selected_imgs = self.sample(imgs, probs, True)
+            return selected_imgs
         else:
             probs = self.sampler(imgs, num_batches)
             imgs = imgs.reshape((num_batches, -1) + (imgs.shape[-3:]))
             alpha = self.train_cfg.get('alpha', 0.8)
             probs = probs * alpha + (1 - probs) * (1 - alpha)
 
-            selected_imgs = self.sample(imgs, probs, False)
-        return selected_imgs
+            selected_imgs, distribution = self.sample(imgs, probs, False)
+            return selected_imgs, distribution
 
     def get_reward(self, cls_score, gt_labels):
         reward, pred = torch.max(cls_score, dim=1, keepdim=True)
         match = (pred == gt_labels).data
-
-        # reward = torch.empty_like(pred)
-        # for i, score in enumerate(pred):
-        #     if match[i]:
-        #         reward[i] = score
-        #     else:
-        #         reward[i] = self.train_cfg.get('penalty', -1)
-        reward[1 - match] = self.train_cfg.get('penalty', -1)
+        reward[~match] = self.train_cfg.get('penalty', -1)
 
         return reward, match.float()
 
     def forward_train(self, imgs, labels, **kwargs):
         num_batches = imgs.shape[0]
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-        imgs = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
+        imgs, distribution = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
         num_clips = 1
 
         imgs = imgs.reshape((num_batches, num_clips, 3, self.num_segments) +
@@ -99,6 +97,10 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         loss_cls = self.cls_head.loss(cls_score, gt_labels, **kwargs)
 
         losses.update(loss_cls)
+
+        if self.train_cfg.get('use_reward', False):
+            reward, match = self.get_reward(cls_score, labels)
+            losses.update(dict(reward=reward))
 
         return losses
 
