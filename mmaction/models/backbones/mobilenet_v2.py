@@ -296,7 +296,7 @@ class MobileNetV2(nn.Module):
             ret = self.avg_pool(ret)
             ret = ret.squeeze()
             ret = ret.reshape((num_batches, -1, ret.shape[-1]))
-            probs = F.softmax(self.logit(ret).squeeze(1), dim=1)
+            probs = F.softmax(self.logit(ret).squeeze(-1), dim=1)
             return probs
         return ret
 

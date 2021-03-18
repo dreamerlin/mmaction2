@@ -7,14 +7,14 @@ from ..registry import RECOGNIZERS
 from .base import BaseRecognizer
 
 
-def sample_gumbel(shape, eps=1e-20):
-    U = torch.rand(shape)
-    U = U.cuda()
+def sample_gumbel(logits, eps=1e-20):
+    shape = logits.shape
+    U = torch.rand(shape, device=logits.device)
     return -torch.log(-torch.log(U + eps) + eps)
 
 
 def gumbel_softmax_sample(logits, temperature=1):
-    y = logits + sample_gumbel(logits.size())
+    y = logits + sample_gumbel(logits)
     return F.softmax(y / temperature, dim=-1)
 
 
@@ -56,21 +56,25 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             return y
 
         shape = y.size()
-        _, ind = y.max(dim=-1)
-        y_hard = torch.zeros_like(y).view(-1, shape[-1])
-        y_hard.scatter_(1, ind.view(-1, 1), 1)
+        _, ind = y.topk(self.num_segments, dim=1)
+        ind_float = ind.float()
+        y_hard = torch.ones_like(y).view(-1, shape[-1]) * -1.
+        y_hard.scatter_(1, ind, ind_float)
         y_hard = y_hard.view(*shape)
+
         # Set gradients w.r.t. y_hard gradients w.r.t. y
         y_hard = (y_hard - y).detach() + y
         return y_hard, y
 
     def sample(self, imgs, probs, test_mode=False):
-        if test_mode:
-            sample_index = probs.topk(self.num_segments, dim=1)[1]
-            sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
-            distribution = None
-        else:
-            if self.bp_mode == 'gradient_policy':
+        if self.bp_mode == 'gradient_policy':
+
+            if test_mode:
+                sample_index = probs.topk(self.num_segments, dim=1)[1]
+                sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+                distribution = None
+                policy = None
+            else:
                 distribution = Bernoulli(probs)
                 num_sample_times = self.num_segments * self.train_cfg.get(
                     'num_sample_times', 1)
@@ -79,30 +83,48 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                     sample_result += distribution.sample()
                 sample_index = sample_result.topk(self.num_segments, dim=1)[1]
                 sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+                policy = torch.zeros_like(probs).int()
+                policy.scatter_(1, sorted_sample_index, 1)
+
+            # num_batches, num_segments
+            num_batches = sorted_sample_index.shape[0]
+            batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
+            selected_imgs = imgs[batch_inds, sorted_sample_index]
+            return selected_imgs, distribution, policy
+
+        else:
+            if test_mode:
+                sample_index = probs.topk(self.num_segments, dim=1)[1]
+                sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+                distribution = None
+                policy = None
             else:
                 hard = self.train_cfg.get('hard_gumbel_softmax', True)
-                sample_index, distribution = self.gumbel_softmax(probs, hard)
-                sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+                probs = probs.squeeze()
+                sample_map, distribution = self.gumbel_softmax(probs, hard)
+                num_batches = imgs.shape[0]
+                sorted_sample_index = sample_map[sample_map >= 0].reshape(num_batches, -1).long()
+                policy = torch.zeros_like(probs).int()
+                policy.scatter_(1, sorted_sample_index, 1)
 
-        # num_batches, num_segments
-        sorted_sample_index = sorted_sample_index.squeeze(-1)
-        num_batches = sorted_sample_index.shape[0]
-        batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
-        selected_imgs = imgs[batch_inds, sorted_sample_index]
-        return selected_imgs, distribution
+            # num_batches, num_segments
+            num_batches = sorted_sample_index.shape[0]
+            batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
+            selected_imgs = imgs[batch_inds, sorted_sample_index]
+            return selected_imgs, distribution, policy
 
     def forward_sampler(self, imgs, num_batches, test_mode=False, **kwargs):
         probs = self.sampler(imgs, num_batches)
         imgs = imgs.reshape((num_batches, -1) + (imgs.shape[-3:]))
 
         if test_mode:
-            selected_imgs, distribution = self.sample(imgs, probs, True)
+            selected_imgs, distribution, policy = self.sample(imgs, probs, True)
         else:
             alpha = self.train_cfg.get('alpha', 0.8)
             probs = probs * alpha + (1 - probs) * (1 - alpha)
-            selected_imgs, distribution = self.sample(imgs, probs, False)
+            selected_imgs, distribution, policy = self.sample(imgs, probs, False)
 
-        return selected_imgs, distribution
+        return selected_imgs, distribution, policy
 
     def get_reward(self, cls_score, gt_labels):
         reward, pred = torch.max(cls_score, dim=1, keepdim=True)
@@ -114,7 +136,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
     def forward_train(self, imgs, labels, **kwargs):
         num_batches = imgs.shape[0]
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-        imgs, distribution = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
+        imgs, distribution, policy = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
         num_clips = 1
 
         imgs = imgs.reshape((num_batches, num_clips, 3, self.num_segments) +
@@ -142,7 +164,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
     def _do_test(self, imgs):
         num_batches = imgs.shape[0]
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-        imgs, _ = self.forward_sampler(imgs, num_batches, test_mode=True)
+        imgs, _, _ = self.forward_sampler(imgs, num_batches, test_mode=True)
         num_clips_crops = imgs.shape[0] // num_batches
         imgs = imgs.reshape((-1, 3, self.num_segments) +
                             imgs.shape[-2:])

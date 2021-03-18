@@ -2,6 +2,8 @@
 model = dict(
     type='Sampler2DRecognizer3D',
     num_segments=8,
+    bp_mode='gumbel_softmax',
+    # bp_mode='gradient_policy',
     sampler=dict(
         type='MobileNetV2',
         pretrained='mmcls://mobilenet_v2',
@@ -82,7 +84,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    videos_per_gpu=12,
+    videos_per_gpu=6,
     workers_per_gpu=4,
     val_dataloader=dict(videos_per_gpu=8, workers_per_gpu=4),
     test_dataloader=dict(videos_per_gpu=6, workers_per_gpu=4),
