@@ -1,9 +1,21 @@
 import torch
 from torch.distributions import Bernoulli
+import torch.nn.functional as F
 
 from .. import builder
 from ..registry import RECOGNIZERS
 from .base import BaseRecognizer
+
+
+def sample_gumbel(shape, eps=1e-20):
+    U = torch.rand(shape)
+    U = U.cuda()
+    return -torch.log(-torch.log(U + eps) + eps)
+
+
+def gumbel_softmax_sample(logits, temperature=1):
+    y = logits + sample_gumbel(logits.size())
+    return F.softmax(y / temperature, dim=-1)
 
 
 @RECOGNIZERS.register_module()
@@ -16,9 +28,12 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                  neck=None,
                  train_cfg=None,
                  test_cfg=None,
+                 bp_mode='gradient_policy',
                  num_segments=16):
         super().__init__(backbone, cls_head, sampler, neck, train_cfg, test_cfg)
         self.num_segments = num_segments
+        self.bp_mode = bp_mode
+        assert bp_mode in ['gradient_policy', 'gumbel_softmax']
 
     def init_weights(self):
         """Initialize the model network weights."""
@@ -28,20 +43,46 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         if hasattr(self, 'neck'):
             self.neck.init_weights()
 
+    def gumbel_softmax(self, logits, hard=False):
+        """
+        ST-gumple-softmax
+        input: [*, n_class]
+        return: flatten --> [*, n_class] an one-hot vector
+        """
+        temperature = self.train_cfg.get('temperature', 1)
+        y = gumbel_softmax_sample(logits, temperature)
+
+        if not hard:
+            return y
+
+        shape = y.size()
+        _, ind = y.max(dim=-1)
+        y_hard = torch.zeros_like(y).view(-1, shape[-1])
+        y_hard.scatter_(1, ind.view(-1, 1), 1)
+        y_hard = y_hard.view(*shape)
+        # Set gradients w.r.t. y_hard gradients w.r.t. y
+        y_hard = (y_hard - y).detach() + y
+        return y_hard, y
+
     def sample(self, imgs, probs, test_mode=False):
         if test_mode:
             sample_index = probs.topk(self.num_segments, dim=1)[1]
             sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
             distribution = None
         else:
-            distribution = Bernoulli(probs)
-            num_sample_times = self.num_segments * self.train_cfg.get(
-                'num_sample_times', 1)
-            sample_result = torch.zeros_like(probs)
-            for _ in range(num_sample_times):
-                sample_result += distribution.sample()
-            sample_index = sample_result.topk(self.num_segments, dim=1)[1]
-            sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+            if self.bp_mode == 'gradient_policy':
+                distribution = Bernoulli(probs)
+                num_sample_times = self.num_segments * self.train_cfg.get(
+                    'num_sample_times', 1)
+                sample_result = torch.zeros_like(probs)
+                for _ in range(num_sample_times):
+                    sample_result += distribution.sample()
+                sample_index = sample_result.topk(self.num_segments, dim=1)[1]
+                sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
+            else:
+                hard = self.train_cfg.get('hard_gumbel_softmax', True)
+                sample_index, distribution = self.gumbel_softmax(probs, hard)
+                sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
 
         # num_batches, num_segments
         sorted_sample_index = sorted_sample_index.squeeze(-1)
