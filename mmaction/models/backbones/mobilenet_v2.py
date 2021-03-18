@@ -290,12 +290,12 @@ class MobileNetV2(nn.Module):
         else:
             return tuple(outs)
 
-    def forward(self, x, num_batchs):
+    def forward(self, x, num_batches):
         ret = self._inner_forward(x)
         if self.is_sampler:
             ret = self.avg_pool(ret)
             ret = ret.squeeze()
-            ret = ret.reshape((num_batchs, -1, ret.shape[-1]))
+            ret = ret.reshape((num_batches, -1, ret.shape[-1]))
             probs = F.softmax(self.logit(ret).squeeze(1), dim=1)
             return probs
         return ret

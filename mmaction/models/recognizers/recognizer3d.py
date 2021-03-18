@@ -62,14 +62,14 @@ class Recognizer3D(BaseRecognizer):
     def forward_test(self, imgs):
         """Defines the computation performed at every call when evaluation and
         testing."""
-        # num_batchs = imgs.shape[0]
+        # num_batches = imgs.shape[0]
         # # img_shape = imgs.shape[-2:]
         # if len(imgs.shape) == 5:
         #     imgs = imgs[:, :, :, None, ...]
         #     imgs = imgs.permute(0, 3, 2, 1, 4, 5).contiguous()
         #     # num_crops = self.test_cfg.get('num_crops', None)
         #     # if num_crops is not None:
-        #     #     imgs = imgs.reshape((num_batchs, num_crops) + (imgs[2], -1, imgs[-2:]))
+        #     #     imgs = imgs.reshape((num_batches, num_crops) + (imgs[2], -1, imgs[-2:]))
         return self._do_test(imgs).cpu().numpy()
 
     def forward_dummy(self, imgs):
