@@ -139,9 +139,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         imgs, distribution, policy = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
         num_clips = 1
 
-        imgs = imgs.reshape((num_batches, num_clips, 3, self.num_segments) +
-                            imgs.shape[-2:])
-        imgs = imgs.reshape((-1, ) + imgs.shape[2:])
+        # num_batch * segment, C, H, W -> num_batch, segment, C, H, W -> num_batch, C, segment, H, W
+        imgs = imgs.reshape((num_batches, self.num_segments) + imgs.shape[-3:]).transpose(1,2).contiguous()
         losses = dict()
 
         x = self.extract_feat(imgs)
@@ -166,8 +165,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
         imgs, _, _ = self.forward_sampler(imgs, num_batches, test_mode=True)
         num_clips_crops = imgs.shape[0] // num_batches
-        imgs = imgs.reshape((-1, 3, self.num_segments) +
-                            imgs.shape[-2:])
+
+        imgs = imgs.reshape((-1, self.num_segments) + imgs.shape[-3:]).transpose(1,2).contiguous()
 
         x = self.extract_feat(imgs)
         if hasattr(self, 'neck'):
