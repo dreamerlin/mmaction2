@@ -75,17 +75,15 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 distribution = None
                 policy = None
             else:
-                distribution = Bernoulli(probs)
-                num_sample_times = self.num_segments * self.train_cfg.get(
-                    'num_sample_times', 1)
-                sample_result = torch.zeros_like(probs)
-                for _ in range(num_sample_times):
-                    sample_result += distribution.sample()
-                sample_index = sample_result.topk(self.num_segments, dim=1)[1]
-                sorted_sample_index, _ = sample_index.sort(dim=1, descending=False)
-                policy = torch.zeros_like(probs).int()
-                policy.scatter_(1, sorted_sample_index, 1)
-
+                num_batches = probs.shape[0]
+                cumsum_probs = probs.reshape(-1).cumsum(0)
+                policy = torch.zeros_like(cumsum_probs).int()
+                for _ in range(self.num_segments):
+                    rand_number_list = torch.rand(num_batches) + torch.arange(num_batches)
+                    for rand_number in rand_number_list:
+                        judge = (cumsum_probs < rand_number).sum()
+                        policy[judge] += 1
+                policy = policy.reshape(num_batches, -1)
             # num_batches, num_segments
             num_batches = sorted_sample_index.shape[0]
             batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
