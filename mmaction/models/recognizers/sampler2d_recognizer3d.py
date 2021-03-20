@@ -75,19 +75,24 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 distribution = None
                 policy = None
             else:
-                num_batches = probs.shape[0]
+                num_batches, original_segments = probs.shape
                 cumsum_probs = probs.reshape(-1).cumsum(0)
                 policy = torch.zeros_like(cumsum_probs).int()
+                sample_index = []
                 for _ in range(self.num_segments):
                     rand_number_list = torch.rand(num_batches) + torch.arange(num_batches)
+                    sub_sample_index = []
                     for rand_number in rand_number_list:
                         judge = (cumsum_probs < rand_number).sum()
                         policy[judge] += 1
+                        sub_sample_index.append(judge % original_segments)
+                    sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
+                sample_index = torch.stack(sample_index, dim=1)
                 policy = policy.reshape(num_batches, -1)
             # num_batches, num_segments
-            num_batches = sorted_sample_index.shape[0]
-            batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
-            selected_imgs = imgs[batch_inds, sorted_sample_index]
+            num_batches = sample_index.shape[0]
+            batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sample_index)
+            selected_imgs = imgs[batch_inds, sample_index]
             return selected_imgs, distribution, policy
 
         else:
