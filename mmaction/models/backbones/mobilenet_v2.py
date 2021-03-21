@@ -4,6 +4,7 @@ import torch.utils.checkpoint as cp
 from mmcv.cnn import ConvModule, constant_init, kaiming_init
 from mmcv.runner import load_checkpoint
 from torch.nn.modules.batchnorm import _BatchNorm
+from mmcv.cnn import normal_init
 
 from ...utils import get_root_logger
 from ..builder import BACKBONES, SAMPLER
@@ -163,7 +164,8 @@ class MobileNetV2(nn.Module):
                  norm_eval=False,
                  with_cp=False,
                  is_sampler=False,
-                 num_segments=8):
+                 num_segments=8,
+                 init_std=0.01):
         super().__init__()
         self.pretrained = pretrained
         self.widen_factor = widen_factor
@@ -183,6 +185,7 @@ class MobileNetV2(nn.Module):
         self.act_cfg = act_cfg
         self.norm_eval = norm_eval
         self.with_cp = with_cp
+        self.init_std = init_std
 
         self.in_channels = make_divisible(32 * widen_factor, 8)
 
@@ -232,6 +235,7 @@ class MobileNetV2(nn.Module):
             self.num_segments = num_segments
             self.avg_pool = nn.AdaptiveAvgPool2d(1)
             self.logit = nn.Linear(self.out_channel, 1)
+            normal_init(self.logit, std=self.init_std)
             # self.value_net = nn.Linear(self.out_channel, 1)
 
     def make_layer(self, out_channels, num_blocks, stride, expand_ratio):

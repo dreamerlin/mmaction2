@@ -45,14 +45,14 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         else:
             self.backbone = builder.build_backbone(backbone)
 
-        if neck is not None:
-            self.neck = builder.build_neck(neck)
-        if sampler is not None:
-            self.sampler = builder.build_sampler(sampler)
-        self.cls_head = builder.build_head(cls_head)
-
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+
+        if neck is not None:
+            self.neck = builder.build_neck(neck)
+        if sampler is not None and self.train_cfg.get('use_sampler', True):
+            self.sampler = builder.build_sampler(sampler)
+        self.cls_head = builder.build_head(cls_head)
 
         # aux_info is the list of tensor names beyond 'imgs' and 'label' which
         # will be used in train_step and val_step, data_batch should contain

@@ -48,6 +48,7 @@ class BaseHead(nn.Module, metaclass=ABCMeta):
                  in_channels,
                  loss_cls=dict(type='CrossEntropyLoss', loss_weight=1.0),
                  multi_class=False,
+                 final_loss=True,
                  label_smooth_eps=0.0):
         super().__init__()
         self.num_classes = num_classes
@@ -55,6 +56,7 @@ class BaseHead(nn.Module, metaclass=ABCMeta):
         self.loss_cls = build_loss(loss_cls)
         self.multi_class = multi_class
         self.label_smooth_eps = label_smooth_eps
+        self.final_loss = final_loss
 
     @abstractmethod
     def init_weights(self):
@@ -95,12 +97,12 @@ class BaseHead(nn.Module, metaclass=ABCMeta):
             labels = ((1 - self.label_smooth_eps) * labels +
                       self.label_smooth_eps / self.num_classes)
 
-        loss_cls = self.loss_cls(cls_score, labels, **kwargs)
-        loss_cls.requires_grad=True
-        # loss_cls may be dictionary or single tensor
-        if isinstance(loss_cls, dict):
-            losses.update(loss_cls)
-        else:
-            losses['loss_cls'] = loss_cls
+        if self.final_loss:
+            loss_cls = self.loss_cls(cls_score, labels, **kwargs)
+            # loss_cls may be dictionary or single tensor
+            if isinstance(loss_cls, dict):
+                losses.update(loss_cls)
+            else:
+                losses['loss_cls'] = loss_cls
 
         return losses

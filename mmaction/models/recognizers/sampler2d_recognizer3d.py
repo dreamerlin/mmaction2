@@ -2,6 +2,8 @@ import torch
 from torch.distributions import Bernoulli
 import torch.nn.functional as F
 
+import numpy as np
+
 from .. import builder
 from ..registry import RECOGNIZERS
 from .base import BaseRecognizer
@@ -37,7 +39,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
 
     def init_weights(self):
         """Initialize the model network weights."""
-        self.sampler.init_weights()
+        if hasattr(self, 'sampler') and self.train_cfg.get('use_sampler', True):
+            self.sampler.init_weights()
         self.backbone.init_weights()
         self.cls_head.init_weights()
         if hasattr(self, 'neck'):
@@ -77,18 +80,21 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             else:
                 num_batches, original_segments = probs.shape
                 cumsum_probs = probs.reshape(-1).cumsum(0)
+                boundary_sum = cumsum_probs[original_segments-1]
+                boundary = torch.arange(num_batches) * boundary_sum
                 policy = torch.zeros_like(cumsum_probs).int()
                 sample_index = []
                 for _ in range(self.num_segments):
-                    rand_number_list = torch.rand(num_batches) + torch.arange(num_batches)
+                    rand_number_list = torch.rand(num_batches) * boundary_sum + boundary
                     sub_sample_index = []
                     for rand_number in rand_number_list:
                         judge = (cumsum_probs < rand_number).sum()
                         policy[judge] += 1
                         sub_sample_index.append(judge % original_segments)
                     sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
-                sample_index = torch.stack(sample_index, dim=1)
+                sample_index = torch.stack(sample_index, dim=1).long().sort()[0]
                 policy = policy.reshape(num_batches, -1)
+                distribution = probs
             # num_batches, num_segments
             num_batches = sample_index.shape[0]
             batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sample_index)
@@ -123,8 +129,9 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         if test_mode:
             selected_imgs, distribution, policy = self.sample(imgs, probs, True)
         else:
-            alpha = self.train_cfg.get('alpha', 0.8)
-            probs = probs * alpha + (1 - probs) * (1 - alpha)
+            # alpha = self.train_cfg.get('alpha', 0.8)
+            # probs = probs * alpha + (1 - probs) * (1 - alpha)
+            # probs = F.softmax(probs, dim=1)
             selected_imgs, distribution, policy = self.sample(imgs, probs, False)
 
         return selected_imgs, distribution, policy
@@ -138,14 +145,26 @@ class Sampler2DRecognizer3D(BaseRecognizer):
 
     def forward_train(self, imgs, labels, **kwargs):
         num_batches = imgs.shape[0]
-        imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-        imgs, distribution, policy = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
-        num_clips = 1
+        # import pdb; pdb.set_trace()
+        if hasattr(self, 'sampler') and self.train_cfg.get('use_sampler', True):
+            imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
+            # imgs = imgs.float()
+            # with torch.no_grad():
+            imgs, distribution, policy = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
+            num_clips = 1
 
-        # num_batch * segment, C, H, W -> num_batch, segment, C, H, W -> num_batch, C, segment, H, W
-        imgs = imgs.reshape((num_batches, self.num_segments) + imgs.shape[-3:]).transpose(1,2).contiguous()
+            # num_batch, segment, C, H, W -> num_batch, C, segment, H, W
+            # imgs_before = np.array(imgs.detach().cpu().numpy())
+            imgs = imgs.transpose(1, 2).contiguous()
+            # imgs_after = np.array(imgs.detach().cpu().numpy())
+            # np.save('img_before', imgs_before)
+            # np.save('img_after', imgs_after)
+            # exit(0)
+        else:
+            imgs = imgs.transpose(1, 2).contiguous()
         losses = dict()
 
+        # with torch.no_grad():
         x = self.extract_feat(imgs)
         if hasattr(self, 'neck'):
             x, loss_aux = self.neck(x, labels.squeeze())
@@ -155,6 +174,20 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         gt_labels = labels.squeeze()
         loss_cls = self.cls_head.loss(cls_score, gt_labels, **kwargs)
 
+        # loss_cls['loss_cls'].require_grads = True
+
+        cls_loss_list = []
+        for i in range(gt_labels.shape[0]):
+            cls_loss_item = F.cross_entropy(cls_score[i].unsqueeze(0), gt_labels[i].unsqueeze(0))
+            cls_loss_list.append(cls_loss_item)
+        loss_cls_ = torch.tensor(cls_loss_list, device=imgs.device, requires_grad=True)
+        eps = 1e-10
+        policy_cross_entropy = -torch.sum(policy * torch.log(distribution + eps), dim=1)
+        loss_cls_ = (loss_cls_ * policy_cross_entropy).mean()
+        # loss_cls_.requires_grad = True
+        loss_cls['loss_cls'] = loss_cls_
+
+        # import pdb; pdb.set_trace()
         losses.update(loss_cls)
 
         if self.train_cfg.get('use_reward', False):

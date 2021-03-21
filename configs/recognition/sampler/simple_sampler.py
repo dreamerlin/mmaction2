@@ -2,8 +2,8 @@
 model = dict(
     type='Sampler2DRecognizer3D',
     num_segments=8,
-    bp_mode='gumbel_softmax',
-    # bp_mode='gradient_policy',
+    # bp_mode='gumbel_softmax',
+    bp_mode='gradient_policy',
     sampler=dict(
         type='MobileNetV2',
         pretrained='mmcls://mobilenet_v2',
@@ -24,12 +24,13 @@ model = dict(
         type='I3DHead',
         in_channels=2048,
         num_classes=200,
+        final_loss=False,
         frozen=True,
         spatial_type='avg',
         dropout_ratio=0.5))
 
 # model training and testing settings
-train_cfg = dict()
+train_cfg = dict(use_sampler=True)
 test_cfg = dict(average_clips='prob')
 # dataset settings
 dataset_type = 'RawframeDataset'
@@ -38,11 +39,11 @@ dataset_type = 'RawframeDataset'
 # ann_file_train = 'data/ActivityNet/anet_train_video.txt'
 # ann_file_val = 'data/ActivityNet/anet_val_video.txt'
 # ann_file_test = 'data/ActivityNet/anet_val_video.txt'
-data_root = 'data/ucf101/rawframes'
-data_root_val = data_root
-ann_file_train = 'data/ucf101/ucf101_train_split_1_rawframes.txt'
-ann_file_val = 'data/ucf101/ucf101_val_split_1_rawframes.txt'
-ann_file_test = 'data/ucf101/ucf101_val_split_1_rawframes.txt'
+data_root = 'data/ActivityNet/rawframes_train'
+data_root_val = 'data/ActivityNet/rawframes_val'
+ann_file_train = 'data/ActivityNet/new_anet_train_video.txt'
+ann_file_val = 'data/ActivityNet/new_anet_val_video.txt'
+ann_file_test = 'data/ActivityNet/new_anet_val_video.txt'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
@@ -84,7 +85,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    videos_per_gpu=6,
+    videos_per_gpu=4,
     workers_per_gpu=4,
     val_dataloader=dict(videos_per_gpu=8, workers_per_gpu=4),
     test_dataloader=dict(videos_per_gpu=6, workers_per_gpu=4),
@@ -92,8 +93,7 @@ data = dict(
         type=dataset_type,
         ann_file=ann_file_train,
         data_prefix=data_root,
-        pipeline=train_pipeline,
-        filename_tmpl='image_{:05d}.jpg'),
+        pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         ann_file=ann_file_val,
@@ -109,8 +109,8 @@ data = dict(
         # with_offset=True,
         filename_tmpl='image_{:05d}.jpg'))
 # optimizer
-optimizer = dict(type='SGD', lr=0.1, momentum=0.9, weight_decay=0.0001)
-# this lr is used for 16 gpus
+optimizer = dict(type='SGD', lr=0.003, momentum=0.9, weight_decay=0.0001)
+# this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
 lr_config = dict(policy='CosineAnnealing', min_lr=0)
@@ -119,7 +119,7 @@ checkpoint_config = dict(interval=1)
 evaluation = dict(
     interval=1, metrics=['top_k_accuracy', 'mean_class_accuracy'])
 log_config = dict(
-    interval=20,
+    interval=5,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='TensorboardLoggerHook'),
@@ -128,7 +128,7 @@ log_config = dict(
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = './work_dirs/simple_sampler/'  # noqa: E501
-load_from = None
+load_from = 'modelzoo/slowonly_pretrained_uniform_r50_1x1x16_40e_anet_video_rgb_uniformsample.pth'
 resume_from = None
 workflow = [('train', 1)]
 find_unused_parameters = True
