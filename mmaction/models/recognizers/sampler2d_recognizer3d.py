@@ -81,6 +81,11 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                     sub_sample_index = []
                     for rand_number in rand_number_list:
                         judge = (cumsum_probs < rand_number).sum()
+
+                        if judge == len(policy):
+                            # avoid overflow
+                            judge = judge - 1
+
                         policy[judge] += 1
                         sub_sample_index.append(judge % original_segments)
                     sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
@@ -91,7 +96,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             num_batches = sample_index.shape[0]
             batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sample_index)
             selected_imgs = imgs[batch_inds, sample_index]
-            return selected_imgs, distribution, policy
+            return selected_imgs, distribution, policy, sample_index
 
         else:
             if test_mode:
@@ -112,21 +117,21 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             num_batches = sorted_sample_index.shape[0]
             batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sorted_sample_index)
             selected_imgs = imgs[batch_inds, sorted_sample_index]
-            return selected_imgs, distribution, policy
+            return selected_imgs, distribution, policy, sorted_sample_index
 
     def forward_sampler(self, imgs, num_batches, test_mode=False, **kwargs):
         probs = self.sampler(imgs, num_batches)
         imgs = imgs.reshape((num_batches, -1) + (imgs.shape[-3:]))
 
         if test_mode:
-            selected_imgs, distribution, policy = self.sample(imgs, probs, True)
+            selected_imgs, distribution, policy, sample_index = self.sample(imgs, probs, True)
         else:
             # alpha = self.train_cfg.get('alpha', 0.8)
             # probs = probs * alpha + (1 - probs) * (1 - alpha)
             # probs = F.softmax(probs, dim=1)
-            selected_imgs, distribution, policy = self.sample(imgs, probs, False)
+            selected_imgs, distribution, policy, sample_index = self.sample(imgs, probs, False)
 
-        return selected_imgs, distribution, policy
+        return selected_imgs, distribution, policy, sample_index
 
     def get_reward(self, cls_score, gt_labels):
         reward, pred = torch.max(cls_score, dim=1, keepdim=True)
@@ -137,12 +142,27 @@ class Sampler2DRecognizer3D(BaseRecognizer):
 
     def forward_train(self, imgs, labels, **kwargs):
         num_batches = imgs.shape[0]
+
+        watch_map = kwargs.get('watch_map')
+        frame_name_list = kwargs.get('frame_name_list')
+
         if hasattr(self, 'sampler'):
             imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-            imgs, distribution, policy = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
+            imgs, distribution, policy, sample_index = self.forward_sampler(imgs, num_batches, test_mode=False, **kwargs)
             imgs = imgs.transpose(1, 2).contiguous()
         else:
             imgs = imgs.transpose(1, 2).contiguous()
+
+        selected_frame_names = []
+        if watch_map is not None and frame_name_list is not None:
+            for i, need_watch in enumerate(watch_map):
+                if need_watch:
+                    frame_names = np.array(frame_name_list[i])
+                    sample_ind = sample_index[i].cpu().numpy().tolist()
+                    selected_frame_names.append(frame_names[sample_ind])
+                else:
+                    selected_frame_names.append(None)
+
 
         losses = dict()
         x = self.extract_feat(imgs)
@@ -173,25 +193,49 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         #     reward, match = self.get_reward(cls_score, labels)
         #     losses.update(dict(reward=reward))
 
-        return losses
+        return losses, selected_frame_names
 
-    def _do_test(self, imgs):
+    def _do_test(self, imgs, **kwargs):
         num_batches = imgs.shape[0]
+
+        watch_map = kwargs.get('watch_map')
+        frame_name_list = kwargs.get('frame_name_list')
+
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-        imgs, _, _ = self.forward_sampler(imgs, num_batches, test_mode=True)
+        imgs, _, _, sample_index = self.forward_sampler(imgs, num_batches, test_mode=True)
         num_clips_crops = imgs.shape[0] // num_batches
 
         imgs = imgs.transpose(1, 2).contiguous()
+
+        selected_frame_names = []
+        if watch_map is not None and frame_name_list is not None:
+            for i, need_watch in enumerate(watch_map):
+                if need_watch:
+                    frame_names = np.array(frame_name_list[i])
+                    # import pdb; pdb.set_trace()
+                    sample_ind = sample_index[i].cpu().numpy().tolist()
+                    selected_frame_names.append(frame_names[sample_ind])
+                else:
+                    selected_frame_names.append(None)
 
         x = self.extract_feat(imgs)
         if hasattr(self, 'neck'):
             x, _ = self.neck(x)
         cls_score = self.cls_head(x)
         cls_score = self.average_clip(cls_score, num_clips_crops)
-        return cls_score
+        return cls_score.cpu().numpy(), selected_frame_names
 
-    def forward_test(self, imgs):
-        return self._do_test(imgs).cpu().numpy()
+    def forward_test(self, imgs, **kwargs):
+        img_metas = kwargs['img_metas']
+        watch_map = []
+        frame_name_list = []
+        for item in img_metas:
+            watch_map.append(item['need_watch'])
+            frame_name_list.append(item['frame_name_list'])
+        kwargs['frame_name_list'] = frame_name_list
+        kwargs['watch_map'] = watch_map
+        # return self._do_test(imgs, **kwargs).cpu().numpy()
+        return self._do_test(imgs, **kwargs)
 
     def forward_gradcam(self, imgs):
         pass

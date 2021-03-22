@@ -227,14 +227,25 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             assert item in data_batch
             aux_info[item] = data_batch[item]
 
-        losses = self(imgs, label, return_loss=True, **aux_info)
+        img_metas = data_batch['img_metas']
+        watch_map = []
+        frame_name_list = []
+        for item in img_metas:
+            watch_map.append(item['need_watch'])
+            frame_name_list.append(item['frame_name_list'])
+
+        aux_info['watch_map'] = watch_map
+        aux_info['frame_name_list'] = frame_name_list
+
+        losses, selected_frame_names = self(imgs, label, return_loss=True, **aux_info)
 
         loss, log_vars = self._parse_losses(losses)
 
         outputs = dict(
             loss=loss,
             log_vars=log_vars,
-            num_samples=len(next(iter(data_batch.values()))))
+            num_samples=len(next(iter(data_batch.values()))),
+            selected_frame_names=selected_frame_names)
 
         return outputs
 
@@ -247,10 +258,17 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         """
         imgs = data_batch['imgs']
         label = data_batch['label']
+        img_metas = data_batch['img_metas']
+        watch_map = []
+        for item in img_metas:
+            need_watch = item['need_watch']
+            watch_map.append(need_watch)
 
         aux_info = {}
         for item in self.aux_info:
             aux_info[item] = data_batch[item]
+
+        aux_info['watch_map'] = watch_map
 
         losses = self(imgs, label, return_loss=True, **aux_info)
 

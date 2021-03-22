@@ -65,8 +65,20 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True):
         prog_bar = mmcv.ProgressBar(len(dataset))
     for data in data_loader:
         with torch.no_grad():
-            result = model(return_loss=False, **data)
+            result, selected_frame_names = model(return_loss=False, **data)
         results.extend(result)
+
+        for items in selected_frame_names:
+            if items is None:
+                continue
+            for i, img_path in enumerate(items):
+                img_path_0 = osp.basename(img_path)
+                img_path_0 = f'{i:02}' + '_' + img_path_0
+                img_dir_1 = osp.basename(osp.dirname(img_path))
+                img_path_1_0 = osp.join('save_img/val', img_dir_1, img_path_0)
+                mmcv.mkdir_or_exist(osp.dirname(img_path_1_0))
+                shutil.copy(img_path, img_path_1_0)
+            print('Saving Done')
 
         if rank == 0:
             # use the first key as main key to calculate the batch size

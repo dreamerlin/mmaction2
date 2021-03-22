@@ -96,9 +96,13 @@ class RawframeDataset(BaseDataset):
                  start_index=1,
                  modality='RGB',
                  sample_by_class=False,
-                 power=None):
+                 power=None,
+                 watch_file=None):
         self.filename_tmpl = filename_tmpl
         self.with_offset = with_offset
+        self.watch_file = watch_file
+        if self.watch_file is not None:
+            self.watch_file_list = open(self.watch_file).read().split('\n')[:20]
         super().__init__(
             ann_file,
             pipeline,
@@ -123,6 +127,8 @@ class RawframeDataset(BaseDataset):
                 idx = 0
                 # idx for frame_dir
                 frame_dir = line_split[idx]
+                need_watch = frame_dir in self.watch_file_list
+                video_info['need_watch'] = need_watch
                 if self.data_prefix is not None:
                     frame_dir = osp.join(self.data_prefix, frame_dir)
                 video_info['frame_dir'] = frame_dir

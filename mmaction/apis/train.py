@@ -7,7 +7,7 @@ from mmcv.runner import (DistSamplerSeedHook, EpochBasedRunner, OptimizerHook,
 from mmcv.runner.hooks import Fp16OptimizerHook
 
 from ..core import (DistEvalHook, EvalHook, OmniSourceDistSamplerSeedHook,
-                    OmniSourceRunner)
+                    OmniSourceRunner, SaveImgHook)
 from ..datasets import build_dataloader, build_dataset
 from ..utils import PreciseBNHook, get_root_logger
 
@@ -129,6 +129,10 @@ def train_model(model,
         precise_bn_hook = PreciseBNHook(data_loader_precise_bn,
                                         **cfg.get('precise_bn'))
         runner.register_hook(precise_bn_hook)
+
+    if cfg.get('save_img', None):
+        save_img_hook = SaveImgHook(**cfg.save_img)
+        runner.register_hook(save_img_hook)
 
     if validate:
         eval_cfg = cfg.get('evaluation', {})

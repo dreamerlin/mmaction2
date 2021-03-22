@@ -1233,6 +1233,7 @@ class RawFrameDecode:
             results['frame_inds'] = np.squeeze(results['frame_inds'])
 
         offset = results.get('offset', 0)
+        frame_name_list = []
 
         for frame_idx in results['frame_inds']:
             frame_idx += offset
@@ -1242,6 +1243,7 @@ class RawFrameDecode:
                 # Get frame with channel order RGB directly.
                 cur_frame = mmcv.imfrombytes(img_bytes, channel_order='rgb')
                 imgs.append(cur_frame)
+                frame_name_list.append(filepath)
             elif modality == 'Flow':
                 x_filepath = osp.join(directory,
                                       filename_tmpl.format('x', frame_idx))
@@ -1258,6 +1260,7 @@ class RawFrameDecode:
         results['imgs'] = imgs
         results['original_shape'] = imgs[0].shape[:2]
         results['img_shape'] = imgs[0].shape[:2]
+        results['frame_name_list'] = frame_name_list
 
         # we resize the gt_bboxes and proposals to their real scale
         if 'gt_bboxes' in results:

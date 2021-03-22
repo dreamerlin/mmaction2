@@ -46,6 +46,12 @@ ann_file_train = 'data/ActivityNet/new_anet_train_video.txt'
 ann_file_val = 'data/ActivityNet/new_anet_val_video.txt'
 ann_file_test = 'data/ActivityNet/new_anet_val_video.txt'
 
+train_watch_file = 'data/ActivityNet/watch_anet_train_video.txt'
+val_watch_file = 'data/ActivityNet/watch_anet_test_video.txt'
+
+save_img_dir = 'save_img/train'
+save_img_dir_val = 'save_img/val'
+
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
 mc_cfg = dict(
@@ -61,7 +67,7 @@ train_pipeline = [
     dict(type='Flip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCHW'),
-    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+    dict(type='Collect', keys=['imgs', 'label'], meta_keys=['need_watch', 'frame_name_list']),
     dict(type='ToTensor', keys=['imgs', 'label'])
 ]
 val_pipeline = [
@@ -71,7 +77,7 @@ val_pipeline = [
     dict(type='CenterCrop', crop_size=256),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCHW'),
-    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+    dict(type='Collect', keys=['imgs', 'label'], meta_keys=['need_watch', 'frame_name_list']),
     dict(type='ToTensor', keys=['imgs'])
 ]
 test_pipeline = [
@@ -81,7 +87,7 @@ test_pipeline = [
     dict(type='CenterCrop', crop_size=256),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCHW'),
-    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+    dict(type='Collect', keys=['imgs', 'label'], meta_keys=['need_watch', 'frame_name_list']),
     dict(type='ToTensor', keys=['imgs'])
 ]
 
@@ -94,16 +100,19 @@ data = dict(
         type=dataset_type,
         ann_file=ann_file_train,
         data_prefix=data_root,
+        watch_file=train_watch_file,
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         ann_file=ann_file_val,
         data_prefix=data_root_val,
+        watch_file=val_watch_file,
         pipeline=val_pipeline,),
     test=dict(
         type=dataset_type,
         ann_file=ann_file_test,
         data_prefix=data_root_val,
+        watch_file=val_watch_file,
         pipeline=test_pipeline,))
 # optimizer
 optimizer = dict(type='SGD', lr=0.003, momentum=0.9, weight_decay=0.0001)
@@ -121,6 +130,7 @@ log_config = dict(
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
     ])
+save_img = dict(save_dir=save_img_dir)
 # runtime settings
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
