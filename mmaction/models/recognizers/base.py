@@ -32,7 +32,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                  sampler=None,
                  neck=None,
                  train_cfg=None,
-                 test_cfg=None):
+                 test_cfg=None,
+                 use_sampler=False):
         super().__init__()
         # The backbones in mmcls can be used by TSN
         if backbone['type'].startswith('mmcls.'):
@@ -47,11 +48,13 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+        self.use_sampler = use_sampler
 
         if neck is not None:
             self.neck = builder.build_neck(neck)
-        if sampler is not None and self.train_cfg.get('use_sampler', True):
+        if sampler is not None and self.use_sampler:
             self.sampler = builder.build_sampler(sampler)
+
         self.cls_head = builder.build_head(cls_head)
 
         # aux_info is the list of tensor names beyond 'imgs' and 'label' which
@@ -76,6 +79,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.cls_head.init_weights()
         if hasattr(self, 'neck'):
             self.neck.init_weights()
+        if hasattr(self, 'sampler'):
+            self.sampler.init_weights()
 
     @auto_fp16()
     def extract_feat(self, imgs):

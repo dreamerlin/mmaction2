@@ -1,14 +1,15 @@
 # model settings
 model = dict(
     type='Sampler2DRecognizer3D',
-    num_segments=8,
+    num_segments=16,
+    use_sampler=True,
     # bp_mode='gumbel_softmax',
     bp_mode='gradient_policy',
     sampler=dict(
         type='MobileNetV2',
         pretrained='mmcls://mobilenet_v2',
         is_sampler=True,
-        num_segments=16),
+        num_segments=32),
     backbone=dict(
         type='ResNet3dSlowOnly',
         depth=50,
@@ -30,7 +31,7 @@ model = dict(
         dropout_ratio=0.5))
 
 # model training and testing settings
-train_cfg = dict(use_sampler=True)
+train_cfg = None
 test_cfg = dict(average_clips='prob')
 # dataset settings
 dataset_type = 'RawframeDataset'
@@ -52,7 +53,7 @@ mc_cfg = dict(
     client_cfg='/mnt/lustre/share/memcached_client/client.conf',
     sys_path='/mnt/lustre/share/pymc/py3')
 train_pipeline = [
-    dict(type='UniformSampleFrames', clip_len=16, num_clips=1),
+    dict(type='UniformSampleFrames', clip_len=32, num_clips=1),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomResizedCrop'),
@@ -64,7 +65,7 @@ train_pipeline = [
     dict(type='ToTensor', keys=['imgs', 'label'])
 ]
 val_pipeline = [
-    dict(type='UniformSampleFrames', clip_len=16, num_clips=1, test_mode=True),
+    dict(type='UniformSampleFrames', clip_len=32, num_clips=1, test_mode=True),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=256),
@@ -74,7 +75,7 @@ val_pipeline = [
     dict(type='ToTensor', keys=['imgs'])
 ]
 test_pipeline = [
-    dict(type='UniformSampleFrames', clip_len=16, num_clips=1, test_mode=True),
+    dict(type='UniformSampleFrames', clip_len=32, num_clips=1, test_mode=True),
     dict(type='FrameSelector'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=256),
@@ -87,8 +88,8 @@ test_pipeline = [
 data = dict(
     videos_per_gpu=4,
     workers_per_gpu=4,
-    val_dataloader=dict(videos_per_gpu=8, workers_per_gpu=4),
-    test_dataloader=dict(videos_per_gpu=6, workers_per_gpu=4),
+    val_dataloader=dict(videos_per_gpu=10, workers_per_gpu=4),
+    test_dataloader=dict(videos_per_gpu=10, workers_per_gpu=4),
     train=dict(
         type=dataset_type,
         ann_file=ann_file_train,
@@ -98,37 +99,33 @@ data = dict(
         type=dataset_type,
         ann_file=ann_file_val,
         data_prefix=data_root_val,
-        pipeline=val_pipeline,
-        # with_offset=True,
-        filename_tmpl='image_{:05d}.jpg'),
+        pipeline=val_pipeline,),
     test=dict(
         type=dataset_type,
         ann_file=ann_file_test,
         data_prefix=data_root_val,
-        pipeline=test_pipeline,
-        # with_offset=True,
-        filename_tmpl='image_{:05d}.jpg'))
+        pipeline=test_pipeline,))
 # optimizer
 optimizer = dict(type='SGD', lr=0.003, momentum=0.9, weight_decay=0.0001)
 # this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
 lr_config = dict(policy='CosineAnnealing', min_lr=0)
-total_epochs = 256
+total_epochs = 50
 checkpoint_config = dict(interval=1)
 evaluation = dict(
-    interval=1, metrics=['top_k_accuracy', 'mean_class_accuracy'])
+    interval=1, metrics=['top_k_accuracy', 'mean_class_accuracy'], gpu_collect=True)
 log_config = dict(
-    interval=5,
+    interval=10,
     hooks=[
         dict(type='TextLoggerHook'),
-        # dict(type='TensorboardLoggerHook'),
+        dict(type='TensorboardLoggerHook'),
     ])
 # runtime settings
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/simple_sampler/'  # noqa: E501
-load_from = 'modelzoo/slowonly_pretrained_uniform_r50_1x1x16_40e_anet_video_rgb_uniformsample.pth'
+work_dir = './work_dirs/simple_sampler_50e/'  # noqa: E501
+load_from = 'modelzoo/slowonly_pretrained_uniform_r50_1x1x16_50e_anet_video_rgb_uniformsample.pth'
 resume_from = None
 workflow = [('train', 1)]
 find_unused_parameters = True
