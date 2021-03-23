@@ -51,12 +51,20 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             return y
 
         shape = y.size()
-        _, ind = y.topk(self.num_segments, dim=1)
-        ind_float = ind.float()
-        y_hard = torch.ones_like(y).view(-1, shape[-1]) * -1.
-        y_hard.scatter_(1, ind, ind_float)
-        y_hard = y_hard.view(*shape)
+        # _, ind = y.topk(self.num_segments, dim=1)
+        # ind_float = ind.float()
+        # y_hard = torch.ones_like(y).view(-1, shape[-1]) * -1.
+        # y_hard.scatter_(1, ind, ind_float)
+        # y_hard = y_hard.view(*shape)
+        #
+        # # Set gradients w.r.t. y_hard gradients w.r.t. y
+        # y_hard = (y_hard - y).detach() + y
+        # return y_hard, y
 
+        _, ind = y.max(dim=-1)
+        y_hard = torch.zeros_like(y).view(-1, shape[-1])
+        y_hard.scatter_(1, ind.view(-1, 1), 1)
+        y_hard = y_hard.view(*shape)
         # Set gradients w.r.t. y_hard gradients w.r.t. y
         y_hard = (y_hard - y).detach() + y
         return y_hard, y
@@ -67,7 +75,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             if test_mode:
                 sample_index = probs.topk(self.num_segments, dim=1)[1]
                 sample_index, _ = sample_index.sort(dim=1, descending=False)
-                distribution = None
+                distribution = probs
                 policy = None
             else:
                 num_batches, original_segments = probs.shape
@@ -107,11 +115,16 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             else:
                 hard = self.train_cfg.get('hard_gumbel_softmax', True)
                 probs = probs.squeeze()
-                sample_map, distribution = self.gumbel_softmax(probs, hard)
-                num_batches = imgs.shape[0]
-                sorted_sample_index = sample_map[sample_map >= 0].reshape(num_batches, -1).long()
-                policy = torch.zeros_like(probs).int()
-                policy.scatter_(1, sorted_sample_index, 1)
+                policy = torch.zeros_like(probs)
+                for _ in range(self.num_segments):
+                    sample_map_, distribution = self.gumbel_softmax(probs, hard)
+                    policy += sample_map_
+
+
+                # num_batches = imgs.shape[0]
+                # sorted_sample_index = sample_map[sample_map >= 1].reshape(num_batches, -1).long()
+                # policy = torch.zeros_like(probs).int()
+                # policy.scatter_(1, sorted_sample_index, 1)
 
             # num_batches, num_segments
             num_batches = sorted_sample_index.shape[0]
@@ -202,7 +215,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         frame_name_list = kwargs.get('frame_name_list')
 
         imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
-        imgs, _, _, sample_index = self.forward_sampler(imgs, num_batches, test_mode=True)
+        imgs, distribution, _, sample_index = self.forward_sampler(imgs, num_batches, test_mode=True)
         num_clips_crops = imgs.shape[0] // num_batches
 
         imgs = imgs.transpose(1, 2).contiguous()
@@ -223,7 +236,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
             x, _ = self.neck(x)
         cls_score = self.cls_head(x)
         cls_score = self.average_clip(cls_score, num_clips_crops)
-        return cls_score.cpu().numpy(), selected_frame_names
+        return cls_score.cpu().numpy(), selected_frame_names, distribution.cpu().numpy()
 
     def forward_test(self, imgs, **kwargs):
         img_metas = kwargs['img_metas']

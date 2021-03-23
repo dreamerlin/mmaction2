@@ -347,7 +347,8 @@ class DistEvalHook(EvalHook):
             runner.model,
             self.dataloader,
             tmpdir=tmpdir,
-            gpu_collect=self.gpu_collect)
+            gpu_collect=self.gpu_collect,
+            epoch=runner.epoch)
         time.sleep(2)
         if runner.rank == 0:
             print('\n')

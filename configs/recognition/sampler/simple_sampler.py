@@ -130,7 +130,7 @@ log_config = dict(
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
     ])
-save_img = dict(save_dir=save_img_dir)
+# save_img = dict(save_dir=save_img_dir)
 # runtime settings
 dist_params = dict(backend='nccl')
 log_level = 'INFO'

@@ -37,7 +37,7 @@ def single_gpu_test(model, data_loader):
     return results
 
 
-def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True):
+def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True, epoch=0):
     """Test model with multiple gpus.
 
     This method tests model with multiple gpus and collects the results
@@ -65,20 +65,26 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True):
         prog_bar = mmcv.ProgressBar(len(dataset))
     for data in data_loader:
         with torch.no_grad():
-            result, selected_frame_names = model(return_loss=False, **data)
+            result, selected_frame_names, probs_list = model(return_loss=False, **data)
         results.extend(result)
 
-        for items in selected_frame_names:
+        for items, probs in zip(selected_frame_names, probs_list):
             if items is None:
                 continue
             for i, img_path in enumerate(items):
                 img_path_0 = osp.basename(img_path)
                 img_path_0 = f'{i:02}' + '_' + img_path_0
                 img_dir_1 = osp.basename(osp.dirname(img_path))
-                img_path_1_0 = osp.join('save_img/val', img_dir_1, img_path_0)
+                img_path_1_0 = osp.join('save_img/val', f'{str(epoch)}_epoch', img_dir_1, img_path_0)
                 mmcv.mkdir_or_exist(osp.dirname(img_path_1_0))
                 shutil.copy(img_path, img_path_1_0)
-            print('Saving Done')
+            txt_file = osp.join('save_img/val', img_dir_1 + '.txt')
+            probs_str = list(map(str, probs))
+            # probs_str = f'epoch {epoch}: ' + ' '.join(probs_str) + '\n'
+            probs_str = f' '.join(probs_str) + '\n'
+            with open(txt_file, 'a') as f:
+                f.write(probs_str)
+            # print('Saving Done')
 
         if rank == 0:
             # use the first key as main key to calculate the batch size

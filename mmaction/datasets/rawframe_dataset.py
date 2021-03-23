@@ -153,6 +153,8 @@ class RawframeDataset(BaseDataset):
                     video_info['label'] = label[0]
                 video_infos.append(video_info)
 
+        # if not self.test_mode:
+        #     video_infos = video_infos[:300]
         return video_infos
 
     def prepare_train_frames(self, idx):
