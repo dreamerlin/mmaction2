@@ -5,9 +5,10 @@ model = dict(
     use_sampler=True,
     # bp_mode='gumbel_softmax',
     bp_mode='gradient_policy',
+    combine_predict=True,
     sampler=dict(
         type='MobileNetV2',
-        pretrained='mmcls://mobilenet_v2',
+        pretrained='modelzoo/mobilenet_pretrained_remove_pre.pth',
         is_sampler=True,
         num_segments=32),
     backbone=dict(
@@ -49,8 +50,8 @@ ann_file_test = 'data/ActivityNet/new_anet_val_video.txt'
 train_watch_file = 'data/ActivityNet/watch_anet_train_video.txt'
 val_watch_file = 'data/ActivityNet/watch_anet_test_video.txt'
 
-save_img_dir = 'save_img/train'
-save_img_dir_val = 'save_img/val'
+save_img_dir = 'save_img_try/train'
+save_img_dir_val = 'save_img_try/val'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
@@ -123,7 +124,7 @@ lr_config = dict(policy='CosineAnnealing', min_lr=0)
 total_epochs = 50
 checkpoint_config = dict(interval=1)
 evaluation = dict(
-    interval=1, metrics=['top_k_accuracy', 'mean_class_accuracy'], gpu_collect=True)
+    interval=1, metrics=['top_k_accuracy', 'mean_class_accuracy'], save_img_dir=save_img_dir_val)
 log_config = dict(
     interval=10,
     hooks=[
@@ -134,7 +135,7 @@ log_config = dict(
 # runtime settings
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/simple_sampler_50e/'  # noqa: E501
+work_dir = './work_dirs/simple_sampler_50e_try/'  # noqa: E501
 load_from = 'modelzoo/slowonly_pretrained_uniform_r50_1x1x16_50e_anet_video_rgb_uniformsample.pth'
 resume_from = None
 workflow = [('train', 1)]

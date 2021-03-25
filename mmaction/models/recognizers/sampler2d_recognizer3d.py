@@ -32,10 +32,12 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                  test_cfg=None,
                  bp_mode='gradient_policy',
                  num_segments=16,
-                 use_sampler=False):
+                 use_sampler=False,
+                 combine_predict=False):
         super().__init__(backbone, cls_head, sampler, neck, train_cfg, test_cfg, use_sampler)
         self.num_segments = num_segments
         self.bp_mode = bp_mode
+        self.combine_predict = combine_predict
         assert bp_mode in ['gradient_policy', 'gumbel_softmax']
 
     def gumbel_softmax(self, logits, hard=False):
@@ -84,19 +86,38 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 boundary = torch.arange(num_batches) * boundary_sum
                 policy = torch.zeros_like(cumsum_probs).int()
                 sample_index = []
-                for _ in range(self.num_segments):
-                    rand_number_list = torch.rand(num_batches) * boundary_sum + boundary
+                if self.combine_predict:
                     sub_sample_index = []
-                    for rand_number in rand_number_list:
-                        judge = (cumsum_probs < rand_number).sum()
+                    for base_number in boundary:
+                        while True:
+                            rand_number = float(torch.rand(1) + base_number)
+                            judge = (cumsum_probs < rand_number).sum()
 
-                        if judge == len(policy):
-                            # avoid overflow
-                            judge = judge - 1
+                            if judge == len(policy):
+                                # avoid overflow
+                                judge = judge - 1
 
-                        policy[judge] += 1
-                        sub_sample_index.append(judge % original_segments)
+                            if policy[judge] == 1:
+                                continue
+
+                            policy[judge] = 1
+                            sub_sample_index.append(judge % original_segments)
+                            break
                     sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
+                else:
+                    for _ in range(self.num_segments):
+                        rand_number_list = torch.rand(num_batches) * boundary_sum + boundary
+                        sub_sample_index = []
+                        for rand_number in rand_number_list:
+                            judge = (cumsum_probs < rand_number).sum()
+
+                            if judge == len(policy):
+                                # avoid overflow
+                                judge = judge - 1
+
+                            policy[judge] += 1
+                            sub_sample_index.append(judge % original_segments)
+                        sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
                 sample_index = torch.stack(sample_index, dim=1).long().sort()[0]
                 policy = policy.reshape(num_batches, -1)
                 distribution = probs
@@ -175,7 +196,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                     selected_frame_names.append(frame_names[sample_ind])
                 else:
                     selected_frame_names.append(None)
-
+        else:
+            selected_frame_names = [None] * num_batches
 
         losses = dict()
         x = self.extract_feat(imgs)
@@ -230,6 +252,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                     selected_frame_names.append(frame_names[sample_ind])
                 else:
                     selected_frame_names.append(None)
+        else:
+            selected_frame_names = [None] * num_batches
 
         x = self.extract_feat(imgs)
         if hasattr(self, 'neck'):

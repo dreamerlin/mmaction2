@@ -306,6 +306,7 @@ class DistEvalHook(EvalHook):
                  broadcast_bn_buffer=True,
                  tmpdir=None,
                  gpu_collect=False,
+                 save_img_dir=None,
                  **eval_kwargs):
         super().__init__(
             dataloader,
@@ -318,6 +319,7 @@ class DistEvalHook(EvalHook):
         self.broadcast_bn_buffer = broadcast_bn_buffer
         self.tmpdir = tmpdir
         self.gpu_collect = gpu_collect
+        self.save_img_dir = save_img_dir
 
     def _do_evaluate(self, runner):
         """perform evaluation and save ckpt."""
@@ -348,7 +350,8 @@ class DistEvalHook(EvalHook):
             self.dataloader,
             tmpdir=tmpdir,
             gpu_collect=self.gpu_collect,
-            epoch=runner.epoch)
+            epoch=runner.epoch,
+            save_img_dir=self.save_img_dir)
         time.sleep(2)
         if runner.rank == 0:
             print('\n')

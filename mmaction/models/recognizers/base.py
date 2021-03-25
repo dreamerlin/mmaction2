@@ -228,14 +228,15 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             aux_info[item] = data_batch[item]
 
         img_metas = data_batch['img_metas']
-        watch_map = []
-        frame_name_list = []
-        for item in img_metas:
-            watch_map.append(item['need_watch'])
-            frame_name_list.append(item['frame_name_list'])
+        if len(img_metas) != 0:
+            watch_map = []
+            frame_name_list = []
+            for item in img_metas:
+                watch_map.append(item['need_watch'])
+                frame_name_list.append(item['frame_name_list'])
 
-        aux_info['watch_map'] = watch_map
-        aux_info['frame_name_list'] = frame_name_list
+            aux_info['watch_map'] = watch_map
+            aux_info['frame_name_list'] = frame_name_list
 
         losses, selected_frame_names = self(imgs, label, return_loss=True, **aux_info)
 
