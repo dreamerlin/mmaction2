@@ -87,23 +87,24 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 policy = torch.zeros_like(cumsum_probs).int()
                 sample_index = []
                 if self.combine_predict:
-                    sub_sample_index = []
-                    for base_number in boundary:
-                        while True:
-                            rand_number = float(torch.rand(1) + base_number)
-                            judge = (cumsum_probs < rand_number).sum()
+                    for _ in range(self.num_segments):
+                        sub_sample_index = []
+                        for base_number in boundary:
+                            while True:
+                                rand_number = float(torch.rand(1) + base_number)
+                                judge = (cumsum_probs < rand_number).sum()
 
-                            if judge == len(policy):
-                                # avoid overflow
-                                judge = judge - 1
+                                if judge == len(policy):
+                                    # avoid overflow
+                                    judge = judge - 1
 
-                            if policy[judge] == 1:
-                                continue
+                                if policy[judge] == 1:
+                                    continue
 
-                            policy[judge] = 1
-                            sub_sample_index.append(judge % original_segments)
-                            break
-                    sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
+                                policy[judge] = 1
+                                sub_sample_index.append(judge % original_segments)
+                                break
+                        sample_index.append(torch.tensor(sub_sample_index, device=probs.device).int())
                 else:
                     for _ in range(self.num_segments):
                         rand_number_list = torch.rand(num_batches) * boundary_sum + boundary
