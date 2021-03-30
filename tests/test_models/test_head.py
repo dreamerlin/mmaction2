@@ -10,7 +10,7 @@ import torch.nn as nn
 import mmaction
 from mmaction.models import (AudioTSNHead, BBoxHeadAVA, FBOHead, I3DHead,
                              LFBInferHead, SlowFastHead, TPNHead, TSMHead,
-                             TSNHead, X3DHead)
+                             TSNHead, VAPHead, X3DHead)
 from .base import generate_backbone_demo_inputs
 
 
@@ -419,3 +419,30 @@ def test_tpn_head():
     assert isinstance(tpn_head.avg_pool2d, nn.AvgPool3d)
     assert tpn_head.avg_pool2d.kernel_size == (1, 7, 7)
     assert cls_scores.shape == torch.Size([2, 4])
+
+
+def test_vap_head():
+    vap_head = VAPHead(num_classes=4, in_channels=2048)
+    vap_head.init_weights()
+
+    assert vap_head.num_classes == 4
+    assert vap_head.dropout_ratio == 0.5
+    assert vap_head.in_channels == 2048
+    assert vap_head.init_std == 0.001
+    assert vap_head.spatial_type == 'avg'
+
+    assert isinstance(vap_head.dropout, nn.Dropout)
+    assert vap_head.dropout.p == vap_head.dropout_ratio
+
+    assert isinstance(vap_head.avg_pool, nn.AdaptiveAvgPool2d)
+    assert vap_head.avg_pool.output_size == (1, 1)
+
+    assert vap_head.vap_level == 3
+
+    input_shape = (8, 2048, 7, 7)
+    feat = torch.rand(input_shape)
+
+    # tsn head inference
+    num_segs = input_shape[0]
+    cls_scores = vap_head(feat, num_segs)
+    assert cls_scores.shape == torch.Size([1, 4])

@@ -17,7 +17,7 @@ class TestSampling(BaseTestLoading):
     def test_sample_frames(self):
         target_keys = [
             'frame_inds', 'clip_len', 'frame_interval', 'num_clips',
-            'total_frames'
+            'total_frames', 'frame_queue_len'
         ]
 
         with pytest.warns(UserWarning):
@@ -44,6 +44,7 @@ class TestSampling(BaseTestLoading):
                                        f'clip_len={3}, '
                                        f'frame_interval={1}, '
                                        f'num_clips={5}, '
+                                       f'frame_queue_len={1}, '
                                        f'temporal_jitter={False}, '
                                        f'twice_sample={False}, '
                                        f'out_of_bound_opt=loop, '
@@ -66,6 +67,7 @@ class TestSampling(BaseTestLoading):
                                        f'clip_len={5}, '
                                        f'frame_interval={1}, '
                                        f'num_clips={5}, '
+                                       f'frame_queue_len={1}, '
                                        f'temporal_jitter={False}, '
                                        f'twice_sample={False}, '
                                        f'out_of_bound_opt=repeat_last, '
@@ -110,6 +112,7 @@ class TestSampling(BaseTestLoading):
                                        f'clip_len={4}, '
                                        f'frame_interval={2}, '
                                        f'num_clips={5}, '
+                                       f'frame_queue_len={1}, '
                                        f'temporal_jitter={True}, '
                                        f'twice_sample={False}, '
                                        f'out_of_bound_opt=loop, '
@@ -137,6 +140,7 @@ class TestSampling(BaseTestLoading):
                                        f'clip_len={4}, '
                                        f'frame_interval={1}, '
                                        f'num_clips={6}, '
+                                       f'frame_queue_len={1}, '
                                        f'temporal_jitter={False}, '
                                        f'twice_sample={False}, '
                                        f'out_of_bound_opt=loop, '
@@ -308,10 +312,33 @@ class TestSampling(BaseTestLoading):
         assert np.max(sample_frames_results['frame_inds']) <= 40
         assert np.min(sample_frames_results['frame_inds']) >= 1
 
+        # Sample Frame using twice sample
+        # clip_len=12, frame_interval=1, num_clips=2
+        video_result = copy.deepcopy(self.video_results)
+        frame_result = copy.deepcopy(self.frame_results)
+        frame_result['total_frames'] = 40
+        config = dict(
+            clip_len=12,
+            frame_interval=1,
+            num_clips=2,
+            frame_queue_len=3,
+            temporal_jitter=False,
+            twice_sample=True,
+            test_mode=True)
+        sample_frames = SampleFrames(**config)
+        sample_frames_results = sample_frames(video_result)
+        assert sample_frames_results['start_index'] == 0
+        assert assert_dict_has_keys(sample_frames_results, target_keys)
+        assert len(sample_frames_results['frame_inds']) == 48 * 3
+        sample_frames_results = sample_frames(frame_result)
+        assert len(sample_frames_results['frame_inds']) == 48 * 3
+        assert np.max(sample_frames_results['frame_inds']) <= 40
+        assert np.min(sample_frames_results['frame_inds']) >= 1
+
     def test_dense_sample_frames(self):
         target_keys = [
             'frame_inds', 'clip_len', 'frame_interval', 'num_clips',
-            'total_frames'
+            'total_frames', 'frame_queue_len'
         ]
 
         # Dense sample with no temporal_jitter in test mode
@@ -336,6 +363,7 @@ class TestSampling(BaseTestLoading):
             f'clip_len={4}, '
             f'frame_interval={1}, '
             f'num_clips={6}, '
+            f'frame_queue_len={1}, '
             f'sample_range={64}, '
             f'num_sample_positions={10}, '
             f'temporal_jitter={False}, '
@@ -397,6 +425,7 @@ class TestSampling(BaseTestLoading):
             f'clip_len={4}, '
             f'frame_interval={1}, '
             f'num_clips={6}, '
+            f'frame_queue_len={1}, '
             f'sample_range={32}, '
             f'num_sample_positions={10}, '
             f'temporal_jitter={False}, '
@@ -446,6 +475,7 @@ class TestSampling(BaseTestLoading):
             f'clip_len={4}, '
             f'frame_interval={1}, '
             f'num_clips={6}, '
+            f'frame_queue_len={1}, '
             f'sample_range={32}, '
             f'num_sample_positions={5}, '
             f'temporal_jitter={False}, '

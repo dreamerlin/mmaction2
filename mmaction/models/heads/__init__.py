@@ -10,10 +10,11 @@ from .ssn_head import SSNHead
 from .tpn_head import TPNHead
 from .tsm_head import TSMHead
 from .tsn_head import TSNHead
+from .vap_head import VAPHead
 from .x3d_head import X3DHead
 
 __all__ = [
     'TSNHead', 'I3DHead', 'BaseHead', 'TSMHead', 'SlowFastHead', 'SSNHead',
     'TPNHead', 'AudioTSNHead', 'X3DHead', 'BBoxHeadAVA', 'AVARoIHead',
-    'FBOHead', 'LFBInferHead'
+    'FBOHead', 'LFBInferHead', 'VAPHead'
 ]

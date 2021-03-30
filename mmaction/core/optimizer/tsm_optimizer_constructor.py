@@ -18,6 +18,11 @@ class TSMOptimizerConstructor(DefaultOptimizerConstructor):
        have a 2x lr multiplier and zero weight decay.
     """
 
+    def __init__(self, *args, modality='RGB', **kwargs):
+        assert modality in ['RGB', 'Flow', 'PA', 'PALite']
+        self.modality = modality
+        super().__init__(*args, **kwargs)
+
     def add_params(self, params, model):
         """Add parameters and their corresponding lr and wd to the params.
 
@@ -76,14 +81,18 @@ class TSMOptimizerConstructor(DefaultOptimizerConstructor):
             normal_weight.append(last_fc_weight)
             normal_bias.append(last_fc_bias)
 
+        first_conv_coefficient = 1
+        if self.modality in ['PA', 'PALite', 'Flow']:
+            first_conv_coefficient = 5
+
         params.append({
             'params': first_conv_weight,
-            'lr': self.base_lr,
+            'lr': self.base_lr * first_conv_coefficient,
             'weight_decay': self.base_wd
         })
         params.append({
             'params': first_conv_bias,
-            'lr': self.base_lr * 2,
+            'lr': self.base_lr * 2 * first_conv_coefficient,
             'weight_decay': 0
         })
         params.append({

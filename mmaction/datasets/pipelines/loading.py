@@ -105,6 +105,7 @@ class SampleFrames:
                  clip_len,
                  frame_interval=1,
                  num_clips=1,
+                 frame_queue_len=1,
                  temporal_jitter=False,
                  twice_sample=False,
                  out_of_bound_opt='loop',
@@ -114,11 +115,13 @@ class SampleFrames:
         self.clip_len = clip_len
         self.frame_interval = frame_interval
         self.num_clips = num_clips
+        self.frame_queue_len = frame_queue_len
         self.temporal_jitter = temporal_jitter
         self.twice_sample = twice_sample
         self.out_of_bound_opt = out_of_bound_opt
         self.test_mode = test_mode
         assert self.out_of_bound_opt in ['loop', 'repeat_last']
+        assert frame_queue_len >= 1 and isinstance(frame_queue_len, int)
 
         if start_index is not None:
             warnings.warn('No longer support "start_index" in "SampleFrames", '
@@ -230,12 +233,25 @@ class SampleFrames:
         else:
             raise ValueError('Illegal out_of_bound option.')
 
+        frame_inds = np.concatenate(frame_inds)
+
+        if self.frame_queue_len != 1:
+            frame_queue = []
+            frame_queue.append(frame_inds)
+            for i in range(1, self.frame_queue_len):
+                frame_inds_i = frame_inds + i
+                frame_queue.append(frame_inds_i)
+            frame_queue = np.stack(frame_queue, axis=1)
+            frame_inds = np.clip(frame_queue, 0, total_frames - 1)
+            frame_inds = np.concatenate(frame_inds)
+
         start_index = results['start_index']
-        frame_inds = np.concatenate(frame_inds) + start_index
+        frame_inds = frame_inds + start_index
         results['frame_inds'] = frame_inds.astype(np.int)
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips
+        results['frame_queue_len'] = self.frame_queue_len
         return results
 
     def __repr__(self):
@@ -243,6 +259,7 @@ class SampleFrames:
                     f'clip_len={self.clip_len}, '
                     f'frame_interval={self.frame_interval}, '
                     f'num_clips={self.num_clips}, '
+                    f'frame_queue_len={self.frame_queue_len}, '
                     f'temporal_jitter={self.temporal_jitter}, '
                     f'twice_sample={self.twice_sample}, '
                     f'out_of_bound_opt={self.out_of_bound_opt}, '
@@ -336,6 +353,7 @@ class DenseSampleFrames(SampleFrames):
                  clip_len,
                  frame_interval=1,
                  num_clips=1,
+                 frame_queue_len=1,
                  sample_range=64,
                  num_sample_positions=10,
                  temporal_jitter=False,
@@ -345,6 +363,7 @@ class DenseSampleFrames(SampleFrames):
             clip_len,
             frame_interval,
             num_clips,
+            frame_queue_len,
             temporal_jitter,
             out_of_bound_opt=out_of_bound_opt,
             test_mode=test_mode)
@@ -403,6 +422,7 @@ class DenseSampleFrames(SampleFrames):
                     f'clip_len={self.clip_len}, '
                     f'frame_interval={self.frame_interval}, '
                     f'num_clips={self.num_clips}, '
+                    f'frame_queue_len={self.frame_queue_len}, '
                     f'sample_range={self.sample_range}, '
                     f'num_sample_positions={self.num_sample_positions}, '
                     f'temporal_jitter={self.temporal_jitter}, '

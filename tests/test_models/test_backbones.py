@@ -7,7 +7,8 @@ from mmcv.utils import _BatchNorm
 
 from mmaction.models import (C3D, X3D, MobileNetV2TSM, ResNet2Plus1d,
                              ResNet3dCSN, ResNet3dSlowFast, ResNet3dSlowOnly,
-                             ResNetAudio, ResNetTIN, ResNetTSM, TANet)
+                             ResNetAudio, ResNetPAN, ResNetTIN, ResNetTSM,
+                             TANet)
 from mmaction.models.backbones.resnet_tsm import NL3DWrapper
 from .base import check_norm_state, generate_backbone_demo_inputs
 
@@ -687,3 +688,24 @@ def test_resnet_tin_backbone():
     # resnet_tin with normal cfg inference
     feat = resnet_tin(imgs)
     assert feat.shape == torch.Size([8, 2048, 2, 2])
+
+
+def test_resnet_pan_backbone():
+    """Test resnet_pan backbone."""
+    input_shape = (8, 3, 64, 64)
+    imgs = generate_backbone_demo_inputs(input_shape)
+
+    resnet_pan_rgb = ResNetPAN(depth=50)
+    resnet_pan_rgb.init_weights()
+    feat = resnet_pan_rgb(imgs)
+    assert feat.shape == torch.Size([8, 2048, 2, 2])
+
+    resnet_pan_pa = ResNetPAN(depth=50, modality='PA')
+    resnet_pan_pa.init_weights()
+    feat = resnet_pan_pa(imgs)
+    assert feat.shape == torch.Size([2, 2048, 2, 2])
+
+    resnet_pan_lite = ResNetPAN(depth=50, modality='PALite')
+    resnet_pan_lite.init_weights()
+    feat = resnet_pan_lite(imgs)
+    assert feat.shape == torch.Size([2, 2048, 2, 2])
