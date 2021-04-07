@@ -123,8 +123,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
     def forward_train(self, imgs, labels, **kwargs):
         num_batches = imgs.shape[0]
 
-        watch_map = kwargs.get('watch_map')
-        frame_name_list = kwargs.get('frame_name_list')
+        watch_map = kwargs.pop('watch_map', None)
+        frame_name_list = kwargs.pop('frame_name_list', None)
 
         if hasattr(self, 'sampler'):
             imgs = imgs.reshape((-1, ) + (imgs.shape[-3:]))
@@ -163,18 +163,19 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         #     cls_loss_list.append(cls_loss_item)
         # loss_cls_ = torch.tensor(cls_loss_list, device=imgs.device, requires_grad=True)
 
-        loss_list = []
-        for i in range(gt_labels.shape[0]):
-            gt_label = gt_labels[i]
-            loss_list.append(F.softmax(cls_score[i])[gt_label].unsqueeze(0))
-        loss_cls_ = torch.cat(loss_list)
-        reward = torch.cat(loss_list)
-        loss_cls['reward'] = reward.mean()
+        if not self.cls_head.final_loss:
+            loss_list = []
+            for i in range(gt_labels.shape[0]):
+                gt_label = gt_labels[i]
+                loss_list.append(F.softmax(cls_score[i])[gt_label].unsqueeze(0))
+            loss_cls_ = torch.cat(loss_list)
+            reward = torch.cat(loss_list)
+            loss_cls['reward'] = reward.mean()
 
-        eps = 1e-10
-        policy_cross_entropy = -torch.sum(torch.log(sample_probs + eps), dim=1)
-        loss_cls_ = (loss_cls_ * policy_cross_entropy).mean()
-        loss_cls['loss_cls'] = loss_cls_
+            eps = 1e-10
+            policy_cross_entropy = -torch.sum(torch.log(sample_probs + eps), dim=1)
+            loss_cls_ = (loss_cls_ * policy_cross_entropy).mean()
+            loss_cls['loss_cls'] = loss_cls_
 
         losses.update(loss_cls)
 
