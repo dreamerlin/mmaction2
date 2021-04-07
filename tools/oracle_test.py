@@ -2,11 +2,14 @@ import argparse
 import os
 import os.path as osp
 import warnings
+import random
+import numpy as np
 
 import mmcv
 import torch
 from mmcv import Config, DictAction
 from mmcv.cnn import fuse_conv_bn
+from mmcv.runner import set_random_seed
 from mmcv.fileio.io import file_handlers
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, init_dist, load_checkpoint
@@ -80,14 +83,6 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
-    parser.add_argument(
-        '--onnx',
-        action='store_true',
-        help='Whether to test with onnx model or not')
-    parser.add_argument(
-        '--tensorrt',
-        action='store_true',
-        help='Whether to test with TensorRT engine or not')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -114,149 +109,8 @@ def turn_off_pretrained(cfg):
             turn_off_pretrained(sub_cfg)
 
 
-def inference_pytorch(args, cfg, distributed, data_loader):
-    """Get predictions by pytorch models."""
-    if args.average_clips is not None:
-        # You can set average_clips during testing, it will override the
-        # original setting
-        if cfg.model.get('test_cfg') is None and cfg.get('test_cfg') is None:
-            cfg.model.setdefault('test_cfg',
-                                 dict(average_clips=args.average_clips))
-        else:
-            if cfg.model.get('test_cfg') is not None:
-                cfg.model.test_cfg.average_clips = args.average_clips
-            else:
-                cfg.test_cfg.average_clips = args.average_clips
-
-    # remove redundant pretrain steps for testing
-    turn_off_pretrained(cfg.model)
-
-    # build the model and load checkpoint
-    model = build_model(
-        cfg.model, train_cfg=None, test_cfg=cfg.get('test_cfg'))
-
-    if len(cfg.module_hooks) > 0:
-        register_module_hooks(model, cfg.module_hooks)
-
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-    load_checkpoint(model, args.checkpoint, map_location='cpu')
-
-    if args.fuse_conv_bn:
-        model = fuse_conv_bn(model)
-
-    if not distributed:
-        model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader)
-    else:
-        model = MMDistributedDataParallel(
-            model.cuda(),
-            device_ids=[torch.cuda.current_device()],
-            broadcast_buffers=False)
-        outputs = multi_gpu_test(model, data_loader, args.tmpdir,
-                                 args.gpu_collect)
-
-    return outputs
-
-
-def inference_tensorrt(ckpt_path, distributed, data_loader, batch_size):
-    """Get predictions by TensorRT engine.
-    For now, multi-gpu mode and dynamic tensor shape are not supported.
-    """
-    assert not distributed, \
-        'TensorRT engine inference only supports single gpu mode.'
-    import tensorrt as trt
-    from mmcv.tensorrt.tensorrt_utils import (torch_dtype_from_trt,
-                                              torch_device_from_trt)
-
-    # load engine
-    with trt.Logger() as logger, trt.Runtime(logger) as runtime:
-        with open(ckpt_path, mode='rb') as f:
-            engine_bytes = f.read()
-        engine = runtime.deserialize_cuda_engine(engine_bytes)
-
-    # For now, only support fixed input tensor
-    cur_batch_size = engine.get_binding_shape(0)[0]
-    assert batch_size == cur_batch_size, \
-        ('Dataset and TensorRT model should share the same batch size, '
-         f'but get {batch_size} and {cur_batch_size}')
-
-    context = engine.create_execution_context()
-
-    # get output tensor
-    dtype = torch_dtype_from_trt(engine.get_binding_dtype(1))
-    shape = tuple(context.get_binding_shape(1))
-    device = torch_device_from_trt(engine.get_location(1))
-    output = torch.empty(
-        size=shape, dtype=dtype, device=device, requires_grad=False)
-
-    # get predictions
-    results = []
-    dataset = data_loader.dataset
-    prog_bar = mmcv.ProgressBar(len(dataset))
-    for data in data_loader:
-        bindings = [
-            data['imgs'].contiguous().data_ptr(),
-            output.contiguous().data_ptr()
-        ]
-        context.execute_async_v2(bindings,
-                                 torch.cuda.current_stream().cuda_stream)
-        results.extend(output.cpu().numpy())
-        batch_size = len(next(iter(data.values())))
-        for _ in range(batch_size):
-            prog_bar.update()
-    return results
-
-
-def inference_onnx(ckpt_path, distributed, data_loader, batch_size):
-    """Get predictions by ONNX.
-    For now, multi-gpu mode and dynamic tensor shape are not supported.
-    """
-    assert not distributed, 'ONNX inference only supports single gpu mode.'
-
-    import onnx
-    import onnxruntime as rt
-
-    # get input tensor name
-    onnx_model = onnx.load(ckpt_path)
-    input_all = [node.name for node in onnx_model.graph.input]
-    input_initializer = [node.name for node in onnx_model.graph.initializer]
-    net_feed_input = list(set(input_all) - set(input_initializer))
-    assert len(net_feed_input) == 1
-
-    # For now, only support fixed tensor shape
-    input_tensor = None
-    for tensor in onnx_model.graph.input:
-        if tensor.name == net_feed_input[0]:
-            input_tensor = tensor
-            break
-    cur_batch_size = input_tensor.type.tensor_type.shape.dim[0].dim_value
-    assert batch_size == cur_batch_size, \
-        ('Dataset and ONNX model should share the same batch size, '
-         f'but get {batch_size} and {cur_batch_size}')
-
-    # get predictions
-    sess = rt.InferenceSession(ckpt_path)
-    results = []
-    dataset = data_loader.dataset
-    prog_bar = mmcv.ProgressBar(len(dataset))
-    for data in data_loader:
-        imgs = data['imgs'].cpu().numpy()
-        onnx_result = sess.run(None, {net_feed_input[0]: imgs})[0]
-        results.extend(onnx_result)
-        batch_size = len(next(iter(data.values())))
-        for _ in range(batch_size):
-            prog_bar.update()
-    return results
-
-
 def main():
     args = parse_args()
-
-    if args.tensorrt and args.onnx:
-        raise ValueError(
-            'Cannot set onnx mode and tensorrt mode at the same time.')
 
     cfg = Config.fromfile(args.config)
 
@@ -307,6 +161,18 @@ def main():
         torch.backends.cudnn.benchmark = True
     cfg.data.test.test_mode = True
 
+    if args.average_clips is not None:
+        # You can set average_clips during testing, it will override the
+        # original setting
+        if cfg.model.get('test_cfg') is None and cfg.get('test_cfg') is None:
+            cfg.model.setdefault('test_cfg',
+                                 dict(average_clips=args.average_clips))
+        else:
+            if cfg.model.get('test_cfg') is not None:
+                cfg.model.test_cfg.average_clips = args.average_clips
+            else:
+                cfg.test_cfg.average_clips = args.average_clips
+
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
         distributed = False
@@ -328,27 +194,79 @@ def main():
                               **cfg.data.get('test_dataloader', {}))
     data_loader = build_dataloader(dataset, **dataloader_setting)
 
-    if args.tensorrt:
-        outputs = inference_tensorrt(args.checkpoint, distributed, data_loader,
-                                     dataloader_setting['videos_per_gpu'])
-    elif args.onnx:
-        outputs = inference_onnx(args.checkpoint, distributed, data_loader,
-                                 dataloader_setting['videos_per_gpu'])
-    else:
-        outputs = inference_pytorch(args, cfg, distributed, data_loader)
+    # remove redundant pretrain steps for testing
+    turn_off_pretrained(cfg.model)
 
-    import time
-    time.sleep(2)
+    # build the model and load checkpoint
+    model = build_model(
+        cfg.model, train_cfg=None, test_cfg=cfg.get('test_cfg'))
+
+    if len(cfg.module_hooks) > 0:
+        register_module_hooks(model, cfg.module_hooks)
+
+    fp16_cfg = cfg.get('fp16', None)
+    if fp16_cfg is not None:
+        wrap_fp16_model(model)
+    load_checkpoint(model, args.checkpoint, map_location='cpu')
+
+    if args.fuse_conv_bn:
+        model = fuse_conv_bn(model)
+
+    time = 80
+    selected_index_list = []
+    top1_acc_list = []
+
+    for i in range(time):
+
+        # rank, _ = get_dist_info()
+        set_random_seed(i)
+
+        interval = 4
+        # a = list(range(32))[::interval]
+        # b = [random.choice(list(range(interval))) for _ in range(len(a))]
+        # selected_index = np.sum([a, b], axis=0)
+        
+        selected_index = sorted(np.random.choice(range(32), 32//4, replace=False))
+        setattr(model, 'selected_index', selected_index)
+        selected_index_list.append(selected_index)
+
+        if not distributed:
+            model = MMDataParallel(model, device_ids=[0])
+            outputs = single_gpu_test(model, data_loader)
+        else:
+            model_warp = MMDistributedDataParallel(
+                model.cuda(),
+                device_ids=[torch.cuda.current_device()],
+                broadcast_buffers=False)
+            outputs = multi_gpu_test(model_warp, data_loader, args.tmpdir,
+                                     args.gpu_collect)
+
+        rank, _ = get_dist_info()
+        if rank == 0:
+            if output_config.get('out', None):
+                out = output_config['out']
+                print(f'\nwriting results to {out}')
+                dataset.dump_results(outputs, **output_config)
+            if eval_config:
+                eval_res = dataset.evaluate(outputs, **eval_config)
+                # for name, val in eval_res.items():
+                # print(f"Sequence: {selected_index}")
+                print(f'"top1_acc": {eval_res["top1_acc"]:.08f}')
+
+                top1_acc_list.append(eval_res['top1_acc'])
+
     rank, _ = get_dist_info()
     if rank == 0:
-        if output_config.get('out', None):
-            out = output_config['out']
-            print(f'\nwriting results to {out}')
-            dataset.dump_results(outputs, **output_config)
-        if eval_config:
-            eval_res = dataset.evaluate(outputs, **eval_config)
-            for name, val in eval_res.items():
-                print(f'{name}: {val:.04f}')
+        for selected_index, acc in zip(selected_index_list, top1_acc_list):
+            print(f'{selected_index}: {acc:.08f}')
+        print(top1_acc_list)
+
+        print('Min ACC top1: ', np.min(top1_acc_list))
+        print('Max ACC top1: ', np.max(top1_acc_list))
+        print('Mean ACC top1: ', np.mean(top1_acc_list))
+        print('Std ACC top1: ', np.std(top1_acc_list))
+        print('Media ACC top1: ', np.median(top1_acc_list))
+        print('Higher Number: ', np.array(top1_acc_list) > 0.7844)
 
 
 if __name__ == '__main__':

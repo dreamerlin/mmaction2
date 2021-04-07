@@ -1,4 +1,6 @@
 import torch
+import random
+import numpy as np
 
 from ..registry import RECOGNIZERS
 from .base import BaseRecognizer
@@ -31,6 +33,14 @@ class Recognizer3D(BaseRecognizer):
     def _do_test(self, imgs):
         """Defines the computation performed at every call when evaluation,
         testing and gradcam."""
+        if self.selected_index:
+            imgs = imgs[:, :, :, self.selected_index, ...]
+
+        # a = list(range(32))[::2]
+        # b = [random.choice([0, 1]) for _ in range(16)]
+        # selected_index = np.sum([a, b], axis=0)
+        # imgs = imgs[:, :, :, selected_index, ...]
+
         num_segs = imgs.shape[1]
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
 

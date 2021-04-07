@@ -72,6 +72,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.init_weights()
 
         self.fp16_enabled = False
+        self.selected_index = None
 
     def init_weights(self):
         """Initialize the model network weights."""

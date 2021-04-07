@@ -1,7 +1,7 @@
 # model settings
 model = dict(
     type='Sampler2DRecognizer3D',
-    num_segments=16,
+    num_segments=8,
     use_sampler=True,
     # bp_mode='gumbel_softmax',
     bp_mode='gradient_policy',
@@ -116,7 +116,7 @@ data = dict(
         watch_file=val_watch_file,
         pipeline=test_pipeline,))
 # optimizer
-optimizer = dict(type='SGD', lr=0.003, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
 # this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
@@ -129,14 +129,13 @@ log_config = dict(
     interval=10,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook'),
     ])
 # save_img = dict(save_dir=save_img_dir)
 # runtime settings
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = './work_dirs/simple_sampler_50e_try/'  # noqa: E501
-load_from = 'modelzoo/slowonly_pretrained_uniform_r50_1x1x16_50e_anet_video_rgb_uniformsample.pth'
+load_from = 'modelzoo/classification_net.pth'
 resume_from = None
 workflow = [('train', 1)]
 find_unused_parameters = True
