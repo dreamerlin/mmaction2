@@ -2,6 +2,7 @@ import torch
 from torch.distributions import Bernoulli
 import torch.nn.functional as F
 import random
+from itertools import combinations
 
 import numpy as np
 
@@ -32,81 +33,59 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                  train_cfg=None,
                  test_cfg=None,
                  bp_mode='gradient_policy',
-                 num_segments=16,
+                 num_segments=8,
+                 num_selected=4,
                  use_sampler=False,
                  combine_predict=False):
         super().__init__(backbone, cls_head, sampler, neck, train_cfg, test_cfg, use_sampler)
         self.num_segments = num_segments
+        self.num_selected = num_selected
         self.bp_mode = bp_mode
         self.combine_predict = combine_predict
         assert bp_mode in ['gradient_policy', 'gumbel_softmax']
+        self.candidate = list(combinations(range(num_segments), num_selected))
 
     def sample(self, imgs, probs, test_mode=False):
 
         if test_mode:
-            sample_index = probs.topk(self.num_segments, dim=1)[1]
-            sample_index, _ = sample_index.sort(dim=1, descending=False)
+            sample_index_ = probs.topk(1, dim=1)[1]
+            # sample_index = probs.topk(self.num_segments, dim=1)[1]
+            # sample_index, _ = sample_index.sort(dim=1, descending=False)
+            sample_index = []
+            for selected_num in sample_index_:
+                sample_index.append(self.candidate[selected_num])
+
+            sample_index = torch.tensor(sample_index)
             distribution = probs
             policy = None
             sample_probs = None
         else:
-            num_batches, original_segments = probs.shape
+            num_batches, original_chosens = probs.shape
             probs_flat = probs.reshape(-1)
-            probs_flat_clone = probs_flat.clone().detach()
+            cumsum_probs = probs_flat.cumsum(0)
 
-            cumsum_probs = probs_flat_clone.cumsum(0)
-            boundary_sum = cumsum_probs[original_segments-1]
+            boundary_sum = cumsum_probs[original_chosens-1]
             boundary = torch.arange(num_batches) * boundary_sum
-            policy = torch.zeros_like(probs_flat).int()
+
             sample_index = []
             sample_probs = []
-            if self.combine_predict:
-                for _ in range(self.num_segments):
-                    sub_sample_index = []
-                    sub_sample_probs = []
-                    for i, base_number in enumerate(boundary):
-                        # duplicate_time = 0
-                        while True:
-                            rand_number = random.random() + base_number
-                            judge = (cumsum_probs < rand_number).sum(0, keepdim=True)
-                            if judge == len(policy):
-                                # avoid overflow
-                                judge = judge - 1
 
-                            if policy[judge] == 1:
-                                # duplicate_time += 1
-                                # if duplicate_time <= self.num_segments:
-                                continue
+            for i, base_number in enumerate(boundary):
+                rand_number = random.random() + base_number
+                judge = (cumsum_probs < rand_number).sum(0, keepdim=True)
+                if judge == len(cumsum_probs):
+                    # avoid overflow
+                    judge = judge - 1
 
-                            policy[judge] = 1
-                            sub_sample_index.append(judge % original_segments)
-                            sub_sample_probs.append(probs_flat[judge])
-                            probs_flat_clone[i * original_segments:(i+1) * original_segments] /= (1-probs_flat_clone[judge])
-                            probs_flat_clone[judge] = 0
-                            break
-                    cumsum_probs = probs_flat_clone.cumsum(0)
-                    sample_index.append(torch.cat(sub_sample_index))
-                    sample_probs.append(torch.cat(sub_sample_probs))
-            else:
-                for _ in range(self.num_segments):
-                    rand_number_list = torch.rand(num_batches) * boundary_sum + boundary
-                    sub_sample_index = []
-                    for rand_number in rand_number_list:
-                        judge = (cumsum_probs < rand_number).sum(0, keepdim=True)
+                sample_index.append(self.candidate[judge % original_chosens])
+                sample_probs.append(probs_flat[judge])
 
-                        if judge == len(policy):
-                            # avoid overflow
-                            judge = judge - 1
+            sample_index = torch.tensor(sample_index)
+            sample_probs = torch.cat(sample_probs)
 
-                        policy[judge] += 1
-                        sub_sample_index.append(judge % original_segments)
-                    sample_index.append(torch.cat(sub_sample_index).long())
-            sample_index = torch.stack(sample_index, dim=1).long().sort()[0]
-            sample_probs = torch.stack(sample_probs, dim=1)
-
-            policy = policy.reshape(num_batches, -1)
             distribution = probs
-        # num_batches, num_segments
+            policy = None
+
         num_batches = sample_index.shape[0]
         batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sample_index)
         selected_imgs = imgs[batch_inds, sample_index]
@@ -163,19 +142,34 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         #     cls_loss_list.append(cls_loss_item)
         # loss_cls_ = torch.tensor(cls_loss_list, device=imgs.device, requires_grad=True)
 
-        if not self.cls_head.final_loss:
-            loss_list = []
-            for i in range(gt_labels.shape[0]):
-                gt_label = gt_labels[i]
-                loss_list.append(F.softmax(cls_score[i])[gt_label].unsqueeze(0))
-            loss_cls_ = torch.cat(loss_list)
-            reward = torch.cat(loss_list)
-            loss_cls['reward'] = reward.mean()
+        # if not self.cls_head.final_loss:
+        loss_list = []
+        for i in range(gt_labels.shape[0]):
+            gt_label = gt_labels[i]
+            gt_score = F.softmax(cls_score[i])[gt_label].unsqueeze(0)
+            max_score, max_index = torch.max(F.softmax(cls_score[i]), 0)
+            if max_index == gt_label:
+                loss = gt_score
+            else:
+                loss = gt_score - max_score
+            loss_list.append(loss)
+        loss_cls_ = torch.cat(loss_list)
+        # reward = torch.cat(loss_list)
+        loss_cls['reward'] = loss_cls_.clone().detach().mean()
 
-            eps = 1e-10
-            policy_cross_entropy = -torch.sum(torch.log(sample_probs + eps), dim=1)
-            loss_cls_ = (loss_cls_ * policy_cross_entropy).mean()
+        eps = 1e-10
+        # policy_cross_entropy = -torch.sum(torch.log(sample_probs + eps), dim=1)
+        entropy = torch.sum(-distribution * torch.log(distribution), dim=1)
+        # policy_cross_entropy = -torch.sum(torch.log(sample_probs + eps))
+        policy_cross_entropy = torch.log(sample_probs + eps)
+
+        loss_cls_ = -(loss_cls_ * policy_cross_entropy + 0.1 * entropy).mean()
+        if self.cls_head.final_loss:
+            loss_cls['entropy_fc'] = loss_cls['loss_cls'].clone().detach()
+            loss_cls['loss_cls'] = loss_cls_ + loss_cls['loss_cls']
+        else:
             loss_cls['loss_cls'] = loss_cls_
+            loss_cls['entropy'] = entropy.clone().detach() * 0.1
 
         losses.update(loss_cls)
 

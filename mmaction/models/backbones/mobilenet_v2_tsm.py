@@ -1,9 +1,13 @@
-from ..registry import BACKBONES
+from ..registry import BACKBONES, SAMPLER
 from .mobilenet_v2 import InvertedResidual, MobileNetV2
 from .resnet_tsm import TemporalShift
 
+from ...utils import get_root_logger
+from mmcv.runner import load_checkpoint
+
 
 @BACKBONES.register_module()
+@SAMPLER.register_module()
 class MobileNetV2TSM(MobileNetV2):
     """MobileNetV2 backbone for TSM.
 
@@ -35,6 +39,13 @@ class MobileNetV2TSM(MobileNetV2):
     def init_weights(self):
         """Initiate the parameters either from existing checkpoint or from
         scratch."""
-        super().init_weights()
+        if 'tsm' not in self.pretrained:
+            super().init_weights()
+
         if self.is_shift:
             self.make_temporal_shift()
+
+        if 'tsm' in self.pretrained:
+            if isinstance(self.pretrained, str):
+                logger = get_root_logger()
+                load_checkpoint(self, self.pretrained, strict=False, logger=logger)
