@@ -78,12 +78,12 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True, epoch=0, s
                     img_path_0 = osp.basename(img_path)
                     img_path_0 = f'{i:02}' + '_' + img_path_0
                     img_dir_1 = osp.basename(osp.dirname(img_path))
-                    img_path_1_0 = osp.join(save_img_dir, f'{str(epoch)}_epoch', img_dir_1, img_path_0)
-                    rank, world_size = get_dist_info()
+                    # img_path_1_0 = osp.join(save_img_dir, f'{str(epoch)}_epoch', img_dir_1, img_path_0)
+                    # rank, world_size = get_dist_info()
                     # if rank == 0:
-                    mmcv.mkdir_or_exist(osp.dirname(img_path_1_0))
+                    # mmcv.mkdir_or_exist(osp.dirname(img_path_1_0))
                     # dist.barrier()
-                    shutil.copy(img_path, img_path_1_0)
+                    # shutil.copy(img_path, img_path_1_0)
                 txt_file = osp.join(save_img_dir, img_dir_1 + '.txt')
                 probs_str = list(map(str, probs))
                 # probs_str = f'epoch {epoch}: ' + ' '.join(probs_str) + '\n'

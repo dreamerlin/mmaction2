@@ -132,7 +132,7 @@ class Sampler2DRecognizer3D(BaseRecognizer):
 
                             probs_flat_clone[judge] = 0
                             break
-                    # probs_flat_clone = torch.clamp(probs_flat_clone, 0.00001, 0.99999)
+                    probs_flat_clone = torch.clamp(probs_flat_clone, 0.00001, 0.99999)
                     # cumsum_probs = probs_flat_clone.cumsum(0)
                     sample_index.append(torch.cat(sub_sample_index))
                     sample_probs.append(torch.cat(sub_sample_probs))
@@ -221,7 +221,6 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 reward = gt_score
             else:
                 reward = gt_score - max_score
-                # reward = torch.clamp()
             reward_list.append(reward)
         reward = torch.cat(reward_list).clone().detach()
         # reward = torch.cat(loss_list)
@@ -234,10 +233,10 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         ones = torch.ones(sample_probs.shape[0], sample_probs.shape[1], device=imgs.device)
         # divisor = F.pad(sample_probs, (1, 0)) / (ones - sample_probs.cumsum(dim=1))[:, :-1]
         divisor = ones - F.pad(sample_probs.cumsum(dim=1)[:, :-1], (1,0))
-        # divisor = torch.clamp(divisor, 1e-7, 1)
+        divisor = torch.clamp(divisor, 1e-7, 1)
 
         sample_probs = sample_probs / divisor
-        # sample_probs = torch.clamp(sample_probs, 1e-7, 0.9999999)
+        sample_probs = torch.clamp(sample_probs, 1e-7, 0.9999999)
 
         entropy = torch.sum(-distribution * torch.log(distribution), dim=1)
 

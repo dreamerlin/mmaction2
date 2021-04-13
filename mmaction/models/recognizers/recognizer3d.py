@@ -39,6 +39,10 @@ class Recognizer3D(BaseRecognizer):
         # a = list(range(32))[::2]
         # b = [random.choice([0, 1]) for _ in range(16)]
         # selected_index = np.sum([a, b], axis=0)
+
+        # selected_index = sorted(np.random.choice(range(8), 4, replace=False))
+        # # setattr(model, 'selected_index', selected_index)
+        # # selected_index_list.append(selected_index)
         # imgs = imgs[:, :, :, selected_index, ...]
 
         num_segs = imgs.shape[1]

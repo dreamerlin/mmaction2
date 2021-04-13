@@ -5,7 +5,7 @@ from mmcv.cnn import ConvModule, constant_init, kaiming_init
 from mmcv.runner import load_checkpoint
 from torch.nn.modules.batchnorm import _BatchNorm
 from mmcv.cnn import normal_init
-import math
+import torch
 
 from ...utils import get_root_logger
 from ..builder import BACKBONES, SAMPLER
@@ -165,8 +165,7 @@ class MobileNetV2(nn.Module):
                  norm_eval=False,
                  with_cp=False,
                  is_sampler=False,
-                 num_segments=8,
-                 num_selected=4,
+                 total_segments=8,
                  init_std=0.01):
         super().__init__()
         self.pretrained = pretrained
@@ -234,11 +233,9 @@ class MobileNetV2(nn.Module):
 
         self.is_sampler = is_sampler
         if self.is_sampler:
-            self.num_segments = num_segments
-            self.num_selected = num_selected
-            self.num_chosens = int(math.factorial(num_segments) / (math.factorial(num_selected) * math.factorial(num_segments - num_selected)))
+            self.total_segments = total_segments
             self.avg_pool = nn.AdaptiveAvgPool2d(1)
-            self.logit = nn.Linear(self.out_channel, self.num_chosens)
+            self.logit = nn.Linear(self.out_channel, 1)
             normal_init(self.logit, std=self.init_std)
             # self.value_net = nn.Linear(self.out_channel, 1)
 
@@ -303,9 +300,10 @@ class MobileNetV2(nn.Module):
         if self.is_sampler:
             ret = self.avg_pool(ret)
             ret = ret.squeeze()
-            ret = ret.reshape((-1, self.num_segments, ret.shape[-1]))
-            ret = ret.mean(dim=1)
-            probs = F.softmax(self.logit(ret), dim=1)
+            ret = ret.reshape((-1, self.total_segments, ret.shape[-1]))
+            probs = F.softmax(self.logit(ret).squeeze(-1), dim=1)
+            # import pdb; pdb.set_trace()
+            # probs = torch.clamp(probs, 1e-7, 0.9999999)
             return probs
         return ret
 
