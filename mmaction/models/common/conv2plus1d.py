@@ -101,4 +101,4 @@ class Conv2plus1d(nn.Module):
         """Initiate the parameters from scratch."""
         kaiming_init(self.conv_s)
         kaiming_init(self.conv_t)
-        constant_init(self.bn_s, 1, bias=0)
+        constant_init(self.bn_s, 1)
