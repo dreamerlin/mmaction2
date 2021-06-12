@@ -26,6 +26,7 @@ class Conv2plus1d(nn.Module):
                  in_channels,
                  out_channels,
                  kernel_size,
+                 mid_channels=None,
                  stride=1,
                  padding=0,
                  dilation=1,
@@ -57,11 +58,16 @@ class Conv2plus1d(nn.Module):
         # where d, t are spatial and temporal kernel, and
         # N_i, N_i-1 are planes
         # and inplanes. https://arxiv.org/pdf/1711.11248.pdf
-        mid_channels = 3 * (
-            in_channels * out_channels * kernel_size[1] * kernel_size[2])
-        mid_channels /= (
-            in_channels * kernel_size[1] * kernel_size[2] + 3 * out_channels)
-        mid_channels = int(mid_channels)
+        if mid_channels is None:
+            mid_channels = 3 * (
+                in_channels * out_channels * kernel_size[1] * kernel_size[2])
+            mid_channels /= (
+                in_channels * kernel_size[1] * kernel_size[2] +
+                3 * out_channels)
+            mid_channels = int(mid_channels)
+            self.mid_channels = mid_channels
+        else:
+            self.mid_channels = mid_channels
 
         self.conv_s = nn.Conv3d(
             in_channels,

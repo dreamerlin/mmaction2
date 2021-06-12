@@ -2,6 +2,8 @@ _base_ = [
     '../../_base_/models/r2plus1d_r34.py', '../../_base_/default_runtime.py'
 ]
 
+model = dict(backbone=dict(all_2plus1d=True, with_pool1=True))
+
 # dataset settings
 dataset_type = 'RawframeDataset'
 data_root = 'data/kinetics400/rawframes_train'
