@@ -9,8 +9,90 @@ from .resnet3d import (BasicBlock3d, Bottleneck3d, ResNet3d,
 
 class BasicBlock2plus1d(BasicBlock3d):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    expansion = 1
+
+    def __init__(self,
+                 inplanes,
+                 planes,
+                 spatial_stride=1,
+                 temporal_stride=1,
+                 dilation=1,
+                 downsample=None,
+                 style='pytorch',
+                 inflate=True,
+                 non_local=False,
+                 non_local_cfg=dict(),
+                 conv_cfg=dict(type='Conv3d'),
+                 norm_cfg=dict(type='BN3d'),
+                 act_cfg=dict(type='ReLU'),
+                 with_cp=False,
+                 all_2plus1d=False,
+                 **kwargs):
+        super(BasicBlock3d, self).__init__()
+        assert style in ['pytorch', 'caffe']
+        # make sure that only ``inflate_style`` is passed into kwargs
+        assert set(kwargs).issubset(['inflate_style'])
+
+        self.inplanes = inplanes
+        self.planes = planes
+        self.spatial_stride = spatial_stride
+        self.temporal_stride = temporal_stride
+        self.dilation = dilation
+        self.style = style
+        self.inflate = inflate
+        self.conv_cfg = conv_cfg
+        self.norm_cfg = norm_cfg
+        self.act_cfg = act_cfg
+        self.with_cp = with_cp
+        self.non_local = non_local
+        self.non_local_cfg = non_local_cfg
+
+        self.conv1_stride_s = spatial_stride
+        self.conv2_stride_s = 1
+        self.conv1_stride_t = temporal_stride
+        self.conv2_stride_t = 1
+
+        if self.inflate:
+            conv1_kernel_size = (3, 3, 3)
+            conv1_padding = (1, dilation, dilation)
+            conv2_kernel_size = (3, 3, 3)
+            conv2_padding = (1, 1, 1)
+        else:
+            conv1_kernel_size = (1, 3, 3)
+            conv1_padding = (0, dilation, dilation)
+            conv2_kernel_size = (1, 3, 3)
+            conv2_padding = (0, 1, 1)
+
+        self.conv1 = ConvModule(
+            inplanes,
+            planes,
+            conv1_kernel_size,
+            stride=(self.conv1_stride_t, self.conv1_stride_s,
+                    self.conv1_stride_s),
+            padding=conv1_padding,
+            bias=False,
+            conv_cfg=self.conv_cfg,
+            norm_cfg=self.norm_cfg,
+            act_cfg=self.act_cfg)
+
+        self.conv2 = ConvModule(
+            planes,
+            planes * self.expansion,
+            conv2_kernel_size,
+            stride=(self.conv2_stride_t, self.conv2_stride_s,
+                    self.conv2_stride_s),
+            padding=conv2_padding,
+            bias=False,
+            conv_cfg=dict(type='Conv2plus1d'),
+            norm_cfg=self.norm_cfg,
+            act_cfg=None)
+
+        self.downsample = downsample
+        self.relu = build_activation_layer(self.act_cfg)
+
+        if self.non_local:
+            self.non_local_block = NonLocal3d(self.conv2.norm.num_features,
+                                              **self.non_local_cfg)
 
 
 class Bottleneck2plus1d(Bottleneck3d):
@@ -185,7 +267,6 @@ class ResNet2Plus1d(ResNet3d):
         assert self.conv_cfg['type'] == 'Conv2plus1d'
 
     def _make_stem_layer(self):
-        super()._make_stem_layer()
         mid_channels = None if self.all_2plus1d else 45
         self.conv1 = ConvModule(
             self.in_channels,
@@ -216,7 +297,7 @@ class ResNet2Plus1d(ResNet3d):
                        act_cfg=None,
                        conv_cfg=dict(type='Conv2plus1d'),
                        with_cp=False,
-                       all_2plus1d=True,
+                       all_2plus1d=False,
                        **kwargs):
         """Build residual layer for ResNet3D.
 
@@ -270,7 +351,7 @@ class ResNet2Plus1d(ResNet3d):
                 kernel_size=1,
                 stride=(temporal_stride, spatial_stride, spatial_stride),
                 bias=False,
-                conv_cfg=conv_cfg if all_2plus1d else dict(type='Conv3d'),
+                conv_cfg=dict(type='Conv3d'),
                 norm_cfg=norm_cfg,
                 act_cfg=None)
 
@@ -292,6 +373,7 @@ class ResNet2Plus1d(ResNet3d):
                 conv_cfg=conv_cfg,
                 act_cfg=act_cfg,
                 with_cp=with_cp,
+                all_2plus1d=all_2plus1d,
                 **kwargs))
         inplanes = planes * block.expansion
         for i in range(1, blocks):
@@ -311,6 +393,7 @@ class ResNet2Plus1d(ResNet3d):
                     conv_cfg=conv_cfg,
                     act_cfg=act_cfg,
                     with_cp=with_cp,
+                    all_2plus1d=all_2plus1d,
                     **kwargs))
 
         return nn.Sequential(*layers)
